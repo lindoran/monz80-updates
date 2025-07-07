@@ -5,13 +5,11 @@ MONZ80 Updates to David Dunfields Z80 Monitor
 <p>
 Here I've started updating David Dunfields MONZ80 found at his webpage:
 </p>
-<br>
 https://dunfield.themindfactory.com/
 
 <p>
 Here is the website for zasm:
 </p>
-<br>
 https://k1.spdns.de/Develop/Projects/zasm/Distributions/
 
 
