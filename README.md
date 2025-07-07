@@ -23,12 +23,12 @@ parameters were changed to reflect MSB / LSB assignments, along with a number
 of case non sensitive label names which had to be updated.
 </p>
 <p>
-The tabing and spacing of the original files have left the code in a slightly
-"mangled but assembleing" state.  I will try to poke at this from time to 
-time but, the goal here was simply to get the code to assemble under something
-slightly more modern; which was done.  If you do find the chance to do a pull 
-request please feel free to fix the section of the code you are working in.
-I would surely apreciate it, though ill get through this eventually.
+The tabbing and spacing of the original files have left the code in a slightly 
+"mangled but assembling" state. I will try to poke at this from time to time but, 
+the goal here was simply to get the code to assemble under something slightly 
+more modern; which was done. If you do find the chance to do a pull request please 
+feel free to fix the section of the code you are working in. I would surely 
+appreciate it, though ill get through this eventually. 
 </p>
 
 <p>
