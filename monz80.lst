@@ -1,0 +1,2290 @@
+                        ; --------------------------------------
+                        ; zasm: assemble "monz80.asm"
+                        ; date: 2025-07-06 22:15:59
+                        ; --------------------------------------
+
+
+                        ;
+                        ; MONZ80: A software debugger for the Z80 processor
+                        ;
+                        ; ?COPY.TXT 1996-2007 Dave Dunfield
+                        ;  -- see COPY.TXT --.
+                        ;
+                        ; Monitor data
+                        ; (modified for vz200 clone with a 68B50 UART at port $80, Z8D)
+                        
+                        ;; This is David Dunfields MONZ80 ported to compile with zasm
+                        ;; this code is (C) David Dunfield, see COPY.TXT
+                        ;; while not open source it is free to use for non-commercial purposes
+                        ;; you can find out more at: https://dunfield.themindfactory.com/
+                        
+                        ;; port to zasm by: David Collins (Z8D)
+                        
+                        ;; some of the formatting is very un-readable, this is because it was
+                        ;; originally written on David's own editor, which has a different tab
+                        ;; and space handling.  If you work on a part of the code, please fix
+                        ;; at least the formatting of the part you are working on - I will continue
+                        ;; to fix the formatting as I work on it, but it is a lot of work to do.
+                        
+                        ;; ill happly accept any patches to this code, please feel free to do a 
+                        ;; pull request on github, or send me a patch file.
+                        
+                        ;; to port to your memory map you need to change MCODE, MDATA and UCODE 
+                        ;; entries below, any commented out EAQUATES or ORG statements, are 
+                        ;; replaced by proper segments.
+                        
+                        
+                        ;; zasm preproc:
+                        #charset ascii 
+                        #target rom 
+                        
+                        ;; precalc size of table for single steps
+0010:                   EFSIZE  EQU (EFEND-EFTAB)/4
+                        
+                        ;; top of stack (without window for banking)
+FFFF:                   #data USTACK, $FFFF 	; user stack address (top of RAM)
+                        
+                        ;; user code area is here, below is the ROM Start address.
+7860:                   #data UCODE, $7860 		; user code area starts here and runs into the stack
+                        
+                        ;; monitor data area is here
+7800:                   #data MDATA, $7800, $60	; monitor requires 60 bytes of ram for variable
+                        
+                        ;; User registers (saved while monitor active)
+7800: 0000              uAF	DS	2		;User AF register
+7802: 0000              uBC	DS	2		;User BC register
+7804: 0000              uDE	DS	2		;User DE register
+7806: 0000              uHL	DS	2		;User HL register
+7808: 0000              uIX	DS	2		;User IX register
+780A: 0000              uIY	DS	2		;User IY register
+780C: 0000              uPC	DS	2		;User PC register
+780E: 0000              uSP	DS	2		;User SP register
+                        
+                        ;; I/O control byte:
+                        
+                         ;  7/80 = Output paused
+                         ;  6/40 = Echo input
+                         ;  5/20 = Convert to upper case
+                         ;  4/10 = Clear input stream first
+                        
+7810: 00                IOCTL	DS	1		;I/O control byte
+7811: 00000000          BRKTAB	DS	8*3		;Breakpoint table
+7815: 00...             
+7829: 0000              TEMP	DS	2		;Temporary storage
+782B: 00                TEMP1	DS	1		;Temporary storage
+782C: 00                TEMP2	DS	1		;Temporary storage
+782D: 00000000          BUFFER	DS	50		;Disassembler output buffer
+7831: 00...             
+785F:                   MONSTK	EQU	$		;Some free space
+                        
+                        ;
+                        ; Monitor Code
+                        
+0000:                   #code MCODE, $0000
+                        
+0000: C37400   [10]     	JP	BEGIN		;Start up monitor
+                        	ORG	1*8			;RST 1
+0008: C36878   [20]     	JP	UCODE+(1*8)	;Execute user code
+                        	ORG	2*8			;RST 2
+0010: C37078   [30]     	JP	UCODE+(2*8)	;Execute user code
+                        	ORG	3*8			;RST 3
+0018: C37878   [40]     	JP	UCODE+(3*8)	;Execute user code
+                        	ORG	4*8			;RST 4
+0020: C38078   [50]     	JP	UCODE+(4*8)	;Execute user code
+                        	ORG	5*8			;RST 5
+0028: C38878   [60]     	JP	UCODE+(5*8)	;Execute user code
+                        	ORG	6*8			;RST 6
+0030: C39078   [70]     	JP	UCODE+(6*8)	;Execute user code
+                        	ORG	7*8			;RST 7 - Breakpoint
+                        ;
+                        ; Breakpoint encountered - save registers, replace breakpoints
+                        ;
+                        
+0038: 220678   [16]     BRKPT	LD	(uHL),HL	;Save HL
+003B: E1       [26]     		POP	HL			;Get PC
+003C: 2B       [32]     		DEC	HL			;Backup to RST instruction
+003D: 220C78   [48]     		LD	(uPC),HL	;Save PC
+0040: F5       [11]     BRKP1	PUSH	AF		;Get AF
+0041: E1       [21]     		POP	HL			;Copy
+0042: 220078   [37]     		LD	(uAF),HL	;Save AF
+0045: 210000   [47]     		LD	HL,0		;Get 0
+0048: 39       [58]     		ADD	HL,SP		;Get SP
+0049: 220E78   [74]     		LD	(uSP),HL	;Save SP
+004C: EB       [78]     		EX	DE,HL		;Get DE
+004D: 220478   [94]     		LD	(uDE),HL	;Save DE
+0050: 60       [98]     		LD	H,B			;Get B
+0051: 69       [102]    		LD	L,C			;Get C
+0052: 220278   [118]    		LD	(uBC),HL	;Save BC
+0055: DD220878 [138]    		LD	(uIX),IX	;Save IX
+0059: FD220A78 [158]    		LD	(uIY),IY	;Save IY
+                        
+                        ;; Remove any active breakpoints
+                        
+005D: 211178   [168]    		LD	HL,BRKTAB	;Point to breakpoint table
+0060: 0608     [175]    		LD	B,8			;Total of 8 breakpoints
+0062: 5E       [ 7]     rembrk1	LD	E,(HL)		;Get LOW address
+0063: 23       [13]     		INC	HL			;Skip to next
+0064: 56       [20]     		LD	D,(HL)		;Get HIGH address
+0065: 23       [26]     		INC	HL			;Skip to next
+0066: 7A       [30]     		LD	A,D			;Get HIGH
+0067: B5       [34]     		OR	L			;Test with LOW
+0068: 2802     [41|46]  		JR	Z,rembrk2	;No breakpoint here
+006A: 7E       [48]     		LD	A,(HL)		;Get opcode
+006B: 12       [55]     		LD	(DE),A		;Resave opcode value
+006C: 23       [ 6]     rembrk2	INC	HL			;Skip to next
+006D: 10F3     [14|19]  		DJNZ	rembrk1	;Remove them all
+006F: CD8F02   [31]     		CALL	RDUMP	;Display registers
+0072: 1873     [43]     		JR		ENTMON	;Enter monitor
+                        
+                        ;; Cold start entry point
+                        
+0074: 315F78   [10]     BEGIN	LD	SP,MONSTK	;Set initial stack
+0077: CD960F   [27]     		CALL	IOINIT	;Initialize I/O
+                        ; Initialize monitor memory to zero
+007A: 210078   [37]     		LD	HL,MDATA	;Point to start of monitor RAM
+007D: 112978   [47]     		LD	DE,TEMP		;End of initialized area
+0080: 3600     [10]     begin1	LD	(HL),0		;Zero 1 byte
+0082: CD5502   [27]     		CALL	CHLDE	;Perform compare
+0085: 23       [33]     		INC	HL			;Advance
+0086: 38F8     [40|45]  		JR	C,begin1	;Zero it all
+                        ; Output welcome message
+0088: CD0B05   [57]     		CALL	WRMSG	;Output message
+008B: 0A0D              		DB	$0A,$0D
+008D: 4D4F4E5A          		defm	'MONZ80 Version 1.0'
+0091: 38302056          
+0095: 65727369          
+0099: 6F6E2031          
+009D: 2E30              
+009F: 0A0D0A            		DB	$0A,$0D,$0A
+00A2: 3F434F50          		defm	'?COPY.TXT 1996-2007 Dave Dunfield'
+00A6: 592E5458          
+00AA: 54203139          
+00AE: 39362D32          
+00B2: 30303720          
+00B6: 44617665          
+00BA: 2044756E          
+00BE: 6669656C          
+00C2: 64                
+00C3: 0A0D              		DB	$0A,$0D
+00C5: 202D2D20          		defm	' -- see COPY.TXT --.'
+00C9: 73656520          
+00CD: 434F5059          
+00D1: 2E545854          
+00D5: 202D2D2E          
+00D9: 0A00              		DB	$0A,0
+                        ; Set initial PC and SP
+00DB: 216078   [67]     		LD	HL,UCODE	;Get default PC
+00DE: 220C78   [83]     		LD	(uPC),HL	;Set it
+00E1: 21FFFF   [93]     		LD	HL,USTACK	;Get default SP
+00E4: 220E78   [109]    		LD	(uSP),HL	;Set it
+                        
+                        ;; Warm-start of monitor
+00E7: 315F78   [10]     ENTMON	LD	SP,MONSTK		;Reset SP
+00EA: 3E60     [17]     		LD	A,%01100000		;Echo, Ucase
+00EC: 321078   [30]     		LD	(IOCTL),A		;Set I/O control
+00EF: CD0B05   [47]     		CALL	WRMSG		;Output string
+00F2: 0A0D3E00          		DB	$0A,$0D,'>',0	;Prompt string
+                        ; Get command from console
+00F6: 0E00     [54]     		LD	C,0			;Clear first char
+00F8: 51       [58]     		LD	D,C			;Clear pending flag
+00F9: 41       [ 4]     cmd		LD	B,C			;Set first character
+00FA: CD6204   [21]     		CALL	GETC	;Get command character
+00FD: 4F       [25]     		LD	C,A			;Set second character
+                        ; Search for command in command table
+00FE: 214601   [35]     		LD	HL,CTABLE	;Point to command table
+0101: 79       [ 4]     cmd1	LD	A,C			;Get LAST char
+0102: BE       [11]     		CP	(HL)		;Match?
+0103: 23       [17]     		INC	HL			;Skip to next
+0104: 2011     [24|29]  		JR	NZ,cmd2		;No, try next
+0106: 78       [28]     		LD	A,B			;Get HIGH char
+0107: BE       [35]     		CP	(HL)		;Match?
+0108: 200D     [42|47]  		JR	NZ,cmd2		;No, try next
+                        ; We found the command - execute handler
+010A: 23       [48]     		INC	HL			;Skip second
+010B: CD0605   [65]     		CALL	SPACE	;Separator
+010E: 7E       [72]     		LD	A,(HL)		;Get LOW address
+010F: 23       [78]     		INC	HL			;Advance
+0110: 66       [85]     		LD	H,(HL)		;Get HIGH address
+0111: 6F       [89]     		LD	L,A			;Set LOW address
+0112: 012F01   [99]     		LD	BC,CMDRET	;Get return address
+0115: C5       [110]    		PUSH	BC		;Save for return
+0116: E9       [114]    		JP	(HL)		;Execute
+                        ; This command didn't match, check for part of two char sequence
+0117: 79       [ 4]     cmd2	LD	A,C			;Get char
+0118: BE       [11]     		CP	(HL)		;Does it match leading of 2char?
+0119: 2001     [18|23]  		JR	NZ,cmd3		;No, skip it
+011B: 14       [22]     		INC	D			;Record possibility
+                        ; Advance to next table entry
+011C: 23       [ 6]     cmd3	INC	HL		 	;Skip second
+011D: 23       [12]     		INC	HL		 	;Skip address LOW
+011E: 23       [18]     		INC	HL		 	;Skip address HIGH
+011F: 7E       [25]     		LD	A,(HL)	 	;Get character
+0120: A7       [29]     		AND	A		 	;End of table
+0121: 20DE     [36|41]  		JR	NZ,cmd1	 	;Check every entry
+0123: B0       [40]     		OR	B		 	;First time through?
+0124: 2003     [47|52]  		JR	NZ,ERROR 	;No, report error
+0126: B2       [51]     		OR	D			;Possible 2 char?
+0127: 20D0     [58|63]  		JR	NZ,cmd		;Try again (case bug fixed )
+                        ; An error has occured
+0129: CD0B05   [17]     ERROR	CALL	WRMSG		;Output message
+012C: 203F00            		defm	' ?',0		;Error message
+012F: 3A1078   [13]     CMDRET	LD	A,(IOCTL)		;Get I/O control
+0132: E610     [20]     		AND	%00010000		;Clean input?
+0134: 28B1     [27|32]  		JR	Z,ENTMON		;No, leave it (case bug fixed)
+                        ; Wait for serial data to clear
+0136: 010000   [10]     CLRSER	LD	BC,0		;Reset counter
+0139: CDA50F   [17]     clrse1	CALL	TESTC		;Wait for input
+013C: A7       [21]     	AND	A		;Character ready?
+013D: 20F7     [28|33]  	JR	NZ,CLRSER	;Yes, reset
+013F: 0B       [34]     	DEC	BC		;Reduce count
+0140: 78       [38]     	LD	A,B		;Get high
+0141: B1       [42]     	OR	C		;Test for zero
+0142: 20F5     [49|54]  	JR	NZ,clrse1	;Wait for expiry
+0144: 18A1     [61]     	JR	ENTMON		;Re-enter monitor
+                        
+                        ;; This bit was frustrating: 
+                        ;; Firstly, David's ASMZ80 assembler suopports very flexible DW directives, 
+                        ;; which essentally allow you to define a 2 byte ASCII string as a single 
+                        ;; word, however the storage format is little-endian, so the string
+                        ;; 'MD' is stored as $44,$4D, which is the reverse of what happens useing DB.
+                        ;; furthermore, you can string together multiple words like this:
+                        
+                        ;;        DW	'DM',DUMP	;Dump memory
+                        
+                        ;; whereas ZASM does not support this, so we have to use a different format completely.
+                        
+                        ;; Secondly the 1 byte commands are stored as if the first byte is the MSB and the 0 is
+                        ;; the LSB, so 'E' is stored as $45,0 so we have to pad a 0 byte to the end of the command.
+                        
+                        ;; Lastly, the jump vector is stored as a 2 byte address, so we have to use the DW directive
+                        ;; which store as a 2 byte little-endian value (the usual way).
+                        
+                        ;; this alignment produces a table which is identical to the original, so the command
+                        ;; handlers can be used without modification.  However unfortunately the code is considerably
+                        ;; less self documenting -- thus the need of this large comment block.
+                        
+                        ;; any qustions about this, I can elaborate -- David Collins (Z8D)
+                        
+                        ; Command handler table
+0146:                   CTABLE:
+0146: 4D44                  DB 'M','D'   ; Dump memory
+0148: 1E02                  DW DUMP
+014A: 4944                  DB 'I','D'   ; Disassemble memory
+014C: 0D02                  DW DISCMD
+014E: 5244                  DB 'R','D'   ; Dump registers
+0150: 8F02                  DW RDUMP
+0152: 4244                  DB 'B','D'   ; Dump breakpoints
+0154: 6603                  DW BDUMP
+0156: 5242                  DB 'R','B'   ; Set breakpoint
+0158: 9A03                  DW SETBRK
+015A: 4500                  DB 'E',0     ; Edit memory
+015C: 0A03                  DW EDIT
+015E: 4600                  DB 'F',0     ; Fill memory
+0160: 5403                  DW FILL
+0162: 4900                  DB 'I',0     ; Input from a port
+0164: 6902                  DW INPORT
+0166: 4F00                  DB 'O',0     ; Output to a port
+0168: 7502                  DW OUTPORT
+016A: 4700                  DB 'G',0     ; Go (execute)
+016C: C501                  DW GO
+016E: 5400                  DB 'T',0     ; Single-step
+0170: 8202                  DW STEP
+0172: 4C00                  DB 'L',0     ; Load HEX file
+0174: BA03                  DW LOAD
+                            ; Register modification commands
+0176: 4641                  DB 'F','A'   ; Change AF
+0178: CD02                  DW CAF
+017A: 4342                  DB 'C','B'   ; Change BC
+017C: D202                  DW CBC
+017E: 4544                  DB 'E','D'   ; Change DE
+0180: D702                  DW CDE
+0182: 4C48                  DB 'L','H'   ; Change HL
+0184: DC02                  DW CHL
+0186: 5849                  DB 'X','I'   ; Change IX
+0188: E102                  DW CIX
+018A: 5949                  DB 'Y','I'   ; Change IY
+018C: E602                  DW CIY
+018E: 4350                  DB 'C','P'   ; Change PC
+0190: EB02                  DW CPC
+0192: 5053                  DB 'P','S'   ; Change SP
+0194: F002                  DW CSP
+0196: 3F00                  DB '?',0     ; Help output
+0198: 9B01                  DW HELP
+019A: 00                    DB 0         ; End of table marker
+                        
+                        ;
+                        ; Help command
+                        ;
+019B: 210F0E   [10]     HELP	LD		HL,HTEXT	;Point to help text
+019E: CDD004   [17]     help1	CALL	LFCR		;New line
+01A1: 0619     [24]     		LD		B,25		;Margin for comments
+01A3: 7E       [ 7]     help2	LD		A,(HL)		;Get data from table
+01A4: 23       [13]     		INC		HL			;Skip to next
+01A5: A7       [17]     		AND		A			;End of line?
+01A6: 2819     [24|29]  		JR		Z,help4		;Yes, stop
+01A8: FE7C     [31]     		CP		'|'			;Special case?
+01AA: 2806     [38|43]  		JR		Z,help3		;Yes, handle it
+01AC: CDAD0F   [55]     		CALL	PUTC		;Output character
+01AF: 05       [59]     		DEC		B			;Reduce count
+01B0: 18F1     [71]     		JR		help2		;Keep going
+01B2: CD0605   [17]     help3	CALL	SPACE		;Space over
+01B5: 10FB     [25|30]  		DJNZ	help3		;Do them all
+01B7: 3E2D     [32]     		LD		A,'-'		;Separator
+01B9: CDAD0F   [49]     		CALL	PUTC		;output
+01BC: CD0605   [66]     		CALL	SPACE		;Space over
+01BF: 18E2     [78]     		JR		help2		;Keep outputing (case bug fixed)
+01C1: B6       [ 7]     help4	OR		(HL)		;More data?
+01C2: 20DA     [14|19]  		JR		NZ,help1	;Keep going
+01C4: C9       [24]     		RET
+                        ;
+                        ; Go (execute)
+                        ;
+01C5: 2A0C78   [16]     GO	LD	HL,(uPC)	;Get user PC
+01C8: 44       [20]     	LD	B,H		;Copy HIGH
+01C9: 4D       [24]     	LD	C,L		;Copy LOW
+01CA: CD9D04   [41]     	CALL	GETADRD		;Get address with default
+01CD: 220C78   [57]     	LD	(uPC),HL	;Save new user PC
+01D0: CDD004   [74]     	CALL	LFCR		;New line
+01D3: CDCD06   [91]     	CALL	GOSTEP		;Step one instruction
+                        ; Implant breakpoints
+01D6: 211178   [101]    	LD	HL,BRKTAB	;Point to breakpoint table
+01D9: 0608     [108]    	LD	B,8		;Max number of breakpoints
+01DB: 5E       [ 7]     imbrk1	LD	E,(HL)		;Get LOW address
+01DC: 23       [13]     	INC	HL		;Advance
+01DD: 56       [20]     	LD	D,(HL)		;Get HIGH address
+01DE: 23       [26]     	INC	HL		;Advance
+01DF: 7A       [30]     	LD	A,D		;Get HIGH
+01E0: B5       [34]     	OR	L		;Test for breakpoint set
+01E1: 2805     [41|46]  	JR	Z,imbrk2	;Not set
+01E3: 1A       [48]     	LD	A,(DE)		;Get opcode
+01E4: 77       [55]     	LD	(HL),A		;Save in table
+01E5: 3EFF     [62]     	LD	A,$FF		;Get breakpoint opcode (RST 7)
+01E7: 12       [69]     	LD	(DE),A		;Write to table
+01E8: 23       [ 6]     imbrk2	INC	HL		;Advance to next
+01E9: 10F0     [14|19]  	DJNZ	imbrk1		;Do them all
+                        ; Restore user registers and execute
+01EB: DD2A0878 [34]     	LD	IX,(uIX)	;Get IX
+01EF: FD2A0A78 [54]     	LD	IY,(uIY)	;Get IY
+01F3: 2A0278   [70]     	LD	HL,(uBC)	;Get BC
+01F6: 44       [74]     	LD	B,H		;Copy
+01F7: 4D       [78]     	LD	C,L		;Copy
+01F8: 2A0478   [94]     	LD	HL,(uDE)	;Get DE
+01FB: EB       [98]     	EX	DE,HL		;Copy
+01FC: 2A0078   [114]    	LD	HL,(uAF)	;Get AF
+01FF: E5       [125]    	PUSH	HL		;Save
+0200: F1       [135]    	POP	AF		;Copy
+0201: 2A0E78   [151]    	LD	HL,(uSP)	;Get user SP
+0204: F9       [157]    	LD	SP,HL		;Copy
+0205: 2A0C78   [173]    	LD	HL,(uPC)	;Get user PC
+0208: E5       [184]    	PUSH	HL		;Stack for return
+0209: 2A0678   [200]    	LD	HL,(uHL)	;Get user HL
+020C: C9       [210]    	RET			;Jump to user program
+                        ;
+                        ; Dump memory in instruction format (disassembly)
+                        ;
+020D: CD8904   [17]     DISCMD	CALL	GETRANG		;Get address
+0210: CDD004   [17]     disc1	CALL	LFCR		;New line
+0213: CD1905   [34]     	CALL	DISASM		;Perform disassembly
+0216: CD5502   [51]     	CALL	CHLDE		;Are we at end?
+0219: 38F5     [58|63]  	JR	C,disc1		;No, keep going
+021B: 28F3     [65|70]  	JR	Z,disc1		;Do last address
+021D: C9       [75]     	RET
+                        ;
+                        ; Dump memory in HEX format
+                        ;
+021E: CD8904   [17]     DUMP	CALL	GETRANG		;Get address range
+0221: CDD004   [17]     dump1	CALL	LFCR		;New line
+0224: CDAE04   [34]     	CALL	WRADDR		;Output address
+0227: CD0605   [51]     	CALL	SPACE		;Space over
+022A: 0610     [58]     	LD	B,16		;Display 16 bytes
+022C: E5       [69]     	PUSH	HL		;Save HL
+022D: CD0605   [17]     dump2	CALL	SPACE		;Space over
+0230: 7E       [24]     	LD	A,(HL)		;Get data
+0231: CDB304   [41]     	CALL	WRBYTE		;Display it
+0234: 23       [47]     	INC	HL		;Advance
+0235: 78       [51]     	LD	A,B		;Get copy
+0236: 3D       [55]     	DEC	A		;Adjust
+0237: E603     [62]     	AND	%00000011	;At 4 byte interval?
+0239: CC0605   [72|79]  	CALL	Z,SPACE		;Add extra space
+023C: 05       [76]     	DEC	B		;Backup count
+023D: 20EE     [83|88]  	JR	NZ,dump2	;Keep going
+023F: E1       [93]     	POP	HL		;Restore register set
+0240: CD0605   [110]    	CALL	SPACE		;Space over
+0243: 0610     [117]    	LD	B,16		;Display 16 bytes
+0245: 7E       [ 7]     dump3	LD	A,(HL)		;Get data
+0246: CD5B02   [24]     	CALL	WRPRINT		;Display if printable
+0249: 23       [30]     	INC	HL		;Advance
+024A: 05       [34]     	DEC	B		;Decrement count
+024B: 20F8     [41|46]  	JR	NZ,dump3	;Do them all
+024D: CD5502   [58]     	CALL	CHLDE		;Compre HL and DE
+0250: 38CF     [65|70]  	JR	C,dump1		;Keep going
+0252: 28CD     [72|77]  	JR	Z,dump1		;Do last address
+0254: C9       [82]     	RET
+                        ; Compare HL and DE
+0255: 7C       [ 4]     CHLDE	LD	A,H		;Get HIGH HL
+0256: BA       [ 8]     	CP	D		;Do compare
+0257: C0       [13|19]  	RET	NZ		;Not same
+0258: 7D       [17]     	LD	A,L		;Get LOW HL
+0259: BB       [21]     	CP	E		;Do compare
+025A: C9       [31]     	RET
+                        ; Display character if printable
+025B: FE20     [ 7]     WRPRINT	CP	' '		;In range
+025D: 3805     [14|19]  	JR	C,wrpri1	;Too low
+025F: FE7F     [21]     	CP	$7F		;In range?
+0261: DAAD0F   [31|31]  	JP	C,PUTC		;Ok, write it
+0264: 3E2E     [ 7]     wrpri1	LD	A,'.'		;Translate to dot
+0266: C3AD0F   [17]     	JP	PUTC		;Write character
+                        ;
+                        ; Input from a port
+                        ;
+0269: CD3404   [17]     INPORT	CALL	GETHEX		;Get port number
+026C: 4F       [21]     	LD	C,A		;Copy to port select
+026D: CD0605   [38]     	CALL	SPACE		;Space over
+0270: ED78     [50]     	IN	A,(C)		;Read port
+0272: C3B304   [60]     	JP	WRBYTE		;Output
+                        ;
+                        ; Output to a port
+                        ;
+0275: CD3404   [17]     OUTPORT	CALL	GETHEX		;Get port number
+0278: 4F       [21]     	LD	C,A		;Copy to port select
+0279: CD0605   [38]     	CALL	SPACE		;Space over
+027C: CD3404   [55]     	CALL	GETHEX		;Get data
+027F: ED79     [67]     	OUT	(C),A		;Write to port
+0281: C9       [77]     	RET
+                        ;
+                        ; Single Step one instruction
+                        ;
+0282: 2A0C78   [16]     STEP	LD	HL,(uPC)	;Get user PC
+0285: 4D       [20]     	LD	C,L		;Set C to copy of lower
+0286: CD1905   [37]     	CALL	DISASM		;Display on console
+0289: CDD004   [54]     	CALL	LFCR		;New line
+028C: CDD506   [71]     	CALL	GOSTEP1		;Perform step
+                        ;
+                        ; Dump registers
+                        ;
+028F: 21AC02   [10]     RDUMP	LD	HL,RNTEXT	;Point to register text
+0292: 110078   [20]     	LD	DE,uAF		;Point to first register
+0295: CD0605   [17]     rdump1	CALL	SPACE		;Space over
+0298: CD1005   [34]     	CALL	WRSTR		;Write string
+029B: 1A       [41]     	LD	A,(DE)		;Get LOW value
+029C: 4F       [45]     	LD	C,A		;Save for later
+029D: 13       [51]     	INC	DE		;Advance
+029E: 1A       [58]     	LD	A,(DE)		;Get HIGH value
+029F: 13       [64]     	INC	DE		;Advance
+02A0: CDB304   [81]     	CALL	WRBYTE		;Write HIGH
+02A3: 79       [85]     	LD	A,C		;Get LOW
+02A4: CDB304   [102]    	CALL	WRBYTE		;Write LOW
+02A7: 7E       [109]    	LD	A,(HL)		;Get flag byte
+02A8: A7       [113]    	AND	A		;At end?
+02A9: 20EA     [120|125]	JR	NZ,rdump1	;Continue
+02AB: C9       [130]    	RET
+                        ; Text of register names (in order of register storage)
+02AC: 41463D00          RNTEXT	defm	'AF=',0
+02B0: 42433D00          		defm	'BC=',0
+02B4: 44453D00          		defm	'DE=',0
+02B8: 484C3D00          		defm	'HL=',0
+02BC: 49583D00          		defm	'IX=',0
+02C0: 49593D00          		defm	'IY=',0
+02C4: 50433D00          		defm	'PC=',0
+02C8: 53503D00          		defm	'SP=',0
+02CC: 00                		DB	0		;End of list
+02CD: 210078   [10]     CAF	LD	HL,uAF		;Point to register
+02D0: 1821     [22]     	JR	CHREG		;Change it
+02D2: 210278   [10]     CBC	LD	HL,uBC		;Point to register
+02D5: 181C     [22]     	JR	CHREG		;Change it
+02D7: 210478   [10]     CDE	LD	HL,uDE		;Point to register
+02DA: 1817     [22]     	JR	CHREG		;Change it
+02DC: 210678   [10]     CHL	LD	HL,uHL		;Point to register
+02DF: 1812     [22]     	JR	CHREG		;Change it
+02E1: 210878   [10]     CIX	LD	HL,uIX		;Point to register
+02E4: 180D     [22]     	JR	CHREG		;Change it
+02E6: 210A78   [10]     CIY	LD	HL,uIY		;Point to register
+02E9: 1808     [22]     	JR	CHREG		;Change it
+02EB: 210C78   [10]     CPC	LD	HL,uPC		;Point to register
+02EE: 1803     [22]     	JR	CHREG		;Change it
+02F0: 210E78   [10]     CSP	LD	HL,uSP		;Point to register
+                        ;Change register pointed to by DE
+02F3: 54       [ 4]     CHREG	LD	D,H		;Copy HIGH
+02F4: 5D       [ 8]     	LD	E,L		;Copy LOW
+02F5: 7E       [15]     	LD	A,(HL)		;Get LOW
+02F6: 23       [21]     	INC	HL		;Advance
+02F7: 66       [28]     	LD	H,(HL)		;Get HIGH
+02F8: 6F       [32]     	LD	L,A		;Copy LOW
+02F9: CDAE04   [49]     	CALL	WRADDR		;Output contents
+02FC: 3E2D     [56]     	LD	A,'-'		;Separator
+02FE: CDAD0F   [73]     	CALL	PUTC		;Write it
+0301: CD8004   [90]     	CALL	GETADR		;Get address
+0304: 7D       [94]     	LD	A,L		;Get LOW
+0305: 12       [101]    	LD	(DE),A		;Write it
+0306: 13       [107]    	INC	DE		;Advance
+0307: 7C       [111]    	LD	A,H		;Get HIGH
+0308: 12       [118]    	LD	(DE),A		;Write it
+0309: C9       [128]    	RET
+                        ;
+                        ; Edit memory
+                        ;
+030A: CD8004   [17]     EDIT	CALL	GETADR		;Get address (with default)
+030D: CDD004   [17]     edit1	CALL	LFCR		;New line
+0310: CDAE04   [34]     	CALL	WRADDR		;Output address
+0313: CD0605   [17]     edit2	CALL	SPACE		;Separator
+0316: 7E       [24]     	LD	A,(HL)		;Get address
+0317: CDB304   [41]     	CALL	WRBYTE		;Output
+031A: 3E2D     [48]     	LD	A,'-'		;Get prompt
+031C: CDAD0F   [65]     	CALL	PUTC		;Output
+031F: CD4704   [82]     	CALL	GETHEXC		;Get HEX input
+0322: 3809     [89|94]  	JR	C,edit4		;Special case
+0324: 77       [96]     	LD	(HL),A		;Write value
+0325: 23       [ 6]     edit3	INC	HL		;Advance to next
+0326: 7D       [10]     	LD	A,L		;Get address
+0327: E607     [17]     	AND	%00000111	;8 byte boundary?
+0329: 28E2     [24|29]  	JR	Z,edit1		;New line
+032B: 18E6     [36]     	JR	edit2		;Its OK
+032D: FE20     [ 7]     edit4	CP	' '		;Skip value
+032F: 2005     [14|19]  	JR	NZ,edit5	;No try next
+0331: CD0605   [31]     	CALL	SPACE		;Align display
+0334: 18EF     [43]     	JR	edit3		;And proceed
+0336: FE27     [ 7]     edit5	CP	$27		;Single quote?
+0338: 200C     [14|19]  	JR	NZ,edit7	;No, try next
+033A: CDA50F   [17]     edit6	CALL	TESTC		;Test for char
+033D: A7       [21]     	AND	A		;Character ready?
+033E: 28FA     [28|33]  	JR	Z,edit6		;No, wait
+0340: 77       [35]     	LD	(HL),A		;Save it
+0341: CD5B02   [52]     	CALL	WRPRINT		;Echo it
+0344: 18DF     [64]     	JR	edit3		;And advance
+0346: FE1B     [ 7]     edit7	CP	$1B		;Exit?
+0348: C8       [12|18]  	RET	Z		;Return
+0349: FE0D     [19]     	CP	$0D		;Return?
+034B: C8       [24|30]  	RET	Z		;Return
+034C: FE08     [31]     	CP	$08		;Backspace
+034E: C22901   [41|41]  	JP	NZ,ERROR	;Report error
+0351: 2B       [47]     	DEC	HL		;Backup
+0352: 18B9     [59]     	JR	edit1		;re-prompt
+                        ;
+                        ; Fill memory
+                        ;
+0354: CD8904   [17]     FILL	CALL	GETRANG		;Get range to fill
+0357: CD0605   [34]     	CALL	SPACE		;Space over
+035A: CD3404   [51]     	CALL	GETHEX		;Get value
+035D: 4F       [55]     	LD	C,A		;Save for later
+035E: 71       [ 7]     fill1	LD	(HL),C		;Save value
+035F: CD5502   [24]     	CALL	CHLDE		;Compare registers
+0362: 23       [30]     	INC	HL		;Advance
+0363: 38F9     [37|42]  	JR	C,fill1		;And continue
+0365: C9       [47]     	RET
+                        ;
+                        ; Display breakpoints
+                        ;
+0366: 111178   [10]     BDUMP	LD		DE,BRKTAB	;Point to breakpoint table
+0369: 0E00     [17]     		LD		C,0			;Max number of breakpoints
+036B: CD0B05   [17]     bdump1	CALL	WRMSG		;Output message
+036E: 204200            		defm	' B',0		;Message
+0371: 79       [21]     		LD		A,C			;Get number
+0372: C630     [28]     		ADD		A,'0'		;Convert to ASCII
+0374: CDAD0F   [45]     		CALL	PUTC		;Output
+0377: 3E3D     [52]     		LD		A,'='		;Separator
+0379: CDAD0F   [69]     		CALL	PUTC		;Write it
+037C: 1A       [76]     		LD		A,(DE)		;Get LOW
+037D: 6F       [80]     		LD		L,A			;Save it
+037E: 13       [86]     		INC		DE			;Advance
+037F: 1A       [93]     		LD		A,(DE)		;Get HIGH
+0380: 67       [97]     		LD		H,A			;Save it
+0381: 13       [103]    		INC		DE			;Skip
+0382: 13       [109]    		INC		DE			;Skip opcode
+0383: B5       [113]    		OR		L			;Set?
+0384: 200A     [120|125]		JR		NZ,bdump2	;Yes, output value
+0386: CD0B05   [137]    		CALL	WRMSG		;Output message
+0389: 2D2D2D2D          		defm	'----',0	;Message
+038D: 00                
+038E: 1803     [149]    		JR		bdump3
+0390: CDAE04   [17]     bdump2	CALL	WRADDR		;Output address
+0393: 0C       [ 4]     bdump3	INC		C			;Get address
+0394: 79       [ 8]     		LD		A,C			;Get value
+0395: FE08     [15]     		CP		8			;In range
+0397: 38D2     [22|27]  		JR		C,bdump1	; Do them all
+0399: C9       [32]     		RET
+                        ;
+                        ; Set a breakpoint
+                        ;
+039A: CD6204   [17]     SETBRK	CALL	GETC		;Get nibble
+039D: D630     [24]     		SUB		'0'			;Convert from ASCII
+039F: FE08     [31]     		CP		8			;In range?
+03A1: D22901   [41|41]  		JP		NC,ERROR	;No, abort
+03A4: 5F       [45]     		LD		E,A			;Copy
+03A5: 87       [49]     		ADD		A,A			;x2
+03A6: 83       [53]     		ADD		A,E			;x3
+03A7: 1678     [60]     		LD		D,BRKTAB >> 8	;Get HIGH offset
+03A9: C611     [67]     		ADD		A,BRKTAB & $FF	;Offset to brktab
+03AB: 5F       [71]     		LD		E,A			;Set LOW value
+03AC: 3001     [78|83]  		JR		NC,setb1	;No carry
+03AE: 14       [82]     		INC		D			;Advance HIGH
+03AF: CD0605   [17]     setb1	CALL	SPACE		;Space over
+03B2: CD8004   [34]     		CALL	GETADR		;Get address
+03B5: EB       [38]     		EX		DE,HL		;Swap
+03B6: 73       [45]     		LD		(HL),E		;Set LOW
+03B7: 23       [51]     		INC		HL			;Advance
+03B8: 72       [58]     		LD		(HL),D		;Set HIGH
+03B9: C9       [68]     		RET
+                        ;
+                        ; Download from serial port
+                        ;
+03BA: 3E30     [ 7]     LOAD	LD	A,%00110000	;Upper case, clear stream
+03BC: 321078   [20]     	LD	(IOCTL),A	;Set I/O control
+03BF: CDC803   [17]     load1	CALL	DLREC		;Load one record
+03C2: C22901   [27|27]  	JP	NZ,ERROR	;Report errors
+03C5: 30F8     [34|39]  	JR	NC,load1	;Not end of file
+03C7: C9       [44]     	RET
+                        ;
+                        ; Download a record from the serial port
+                        ;
+03C8: CD6204   [17]     DLREC	CALL	GETC		;Read a character
+03CB: FE3A     [24]     	CP	':'		;Start of record?
+03CD: 2837     [31|36]  	JR	Z,DLINT		;Download INTEL format
+03CF: FE53     [38]     	CP	'S'		;Is it MOTOROLA?
+03D1: 20F5     [45|50]  	JR	NZ,DLREC	;No, keep looking
+                        ; Download a MOTOROLA HEX format record
+03D3: CD6204   [17]     DLMOT	CALL	GETC		;Get next character
+03D6: FE30     [24]     	CP	'0'		;Header record?
+03D8: 28EE     [31|36]  	JR	Z,DLREC		;Yes, skip it
+03DA: FE39     [38]     	CP	'9'		;End of file?
+03DC: 2851     [45|50]  	JR	Z,DLEOF		;Yes, report EOF
+03DE: FE31     [52]     	CP	'1'		;Type 1 (code) record
+03E0: 204F     [59|64]  	JR	NZ,DLERR	;Report error
+03E2: CD3404   [76]     	CALL	GETHEX		;Get hex byte
+03E5: 4F       [80]     	LD	C,A		;Start checksum
+03E6: D603     [87]     	SUB	3		;Convert for overhead
+03E8: 5F       [91]     	LD	E,A		;Save data length
+03E9: CD3404   [108]    	CALL	GETHEX		;Get first byte of address
+03EC: 67       [112]    	LD	H,A		;Set HIGH address
+03ED: 81       [116]    	ADD	A,C		;Include in checksum
+03EE: 4F       [120]    	LD	C,A		;And re-save
+03EF: CD3404   [137]    	CALL	GETHEX		;Get next byte of address
+03F2: 6F       [141]    	LD	L,A		;Set LOW address
+03F3: 81       [145]    	ADD	A,C		;Include in checksum
+03F4: 4F       [149]    	LD	C,A		;And re-save
+03F5: CD3404   [17]     DMOT1	CALL	GETHEX		;Get a byte of data
+03F8: 77       [24]     	LD	(HL),A		;Save in memory
+03F9: 23       [30]     	INC	HL		;Advance
+03FA: 81       [34]     	ADD	A,C		;Include in checksum
+03FB: 4F       [38]     	LD	C,A		;And re-save
+03FC: 1D       [42]     	DEC	E		;Reduce length
+03FD: 20F6     [49|54]  	JR	NZ,DMOT1	;Keep going
+03FF: CD3404   [66]     	CALL	GETHEX		;Get record checksum
+0402: 81       [70]     	ADD	A,C		;Include calculated checksum
+0403: 3C       [74]     	INC	A		;Adjust for test
+0404: A7       [78]     	AND	A		;Clear carry set Z if no error
+0405: C9       [88]     	RET
+                        ; Download a record in INTEL hex format
+0406: CD3404   [17]     DLINT	CALL	GETHEX		;Get length
+0409: A7       [21]     	AND	A		;End of file?
+040A: 2823     [28|33]  	JR	Z,DLEOF		;Yes, handle it
+040C: 4F       [32]     	LD	C,A		;Begin Checksum
+040D: 5F       [36]     	LD	E,A		;Record length
+040E: CD3404   [53]     	CALL	GETHEX		;Get HIGH address
+0411: 67       [57]     	LD	H,A		;Set HIGH address
+0412: 81       [61]     	ADD	A,C		;Include in checksum
+0413: 4F       [65]     	LD	C,A		;Re-save
+0414: CD3404   [82]     	CALL	GETHEX		;Get LOW address
+0417: 6F       [86]     	LD	L,A		;Set LOW address
+0418: 81       [90]     	ADD	A,C		;Include in checksum
+0419: 4F       [94]     	LD	C,A		;Re-save
+041A: CD3404   [111]    	CALL	GETHEX		;Get type byte
+041D: 81       [115]    	ADD	A,C		;Include in checksum
+041E: 4F       [119]    	LD	C,A		;Re-save
+041F: CD3404   [17]     DLINT1	CALL	GETHEX		;Get data byte
+0422: 77       [24]     	LD	(HL),A		;Save in memory
+0423: 23       [30]     	INC	HL		;Advance to next
+0424: 81       [34]     	ADD	A,C		;Include in checksum
+0425: 4F       [38]     	LD	C,A		;Resave checksum
+0426: 1D       [42]     	DEC	E		;Reduce count
+0427: 20F6     [49|54]  	JR	NZ,DLINT1	;Do entire record
+0429: CD3404   [66]     	CALL	GETHEX		;Get record checksum
+042C: 81       [70]     	ADD	A,C		;Add to computed checksum
+042D: A7       [74]     	AND	A		;Clear carry, set Z if no error
+042E: C9       [84]     	RET
+                        ; End of file on download
+042F: 37       [ 4]     DLEOF	SCF			;Set carry, EOF
+0430: C9       [14]     	RET
+                        ; Invalid record type
+0431: F6FF     [ 7]     DLERR	OR	$FF		;Clear C and Z
+0433: C9       [17]     	RET
+                        ;
+                        ; Get byte into A
+                        ;
+0434: CD4D04   [17]     GETHEX	CALL	GETNIB		;Get nibble
+0437: DA2901   [27|27]  	JP	C,ERROR		;Report error
+043A: 07       [ 4]     geth1	RLCA			;Shift
+043B: 07       [ 8]     	RLCA			;Over into
+043C: 07       [12]     	RLCA			;High nibble
+043D: 07       [16]     	RLCA			;Position
+043E: 47       [20]     	LD	B,A		;Save for later
+043F: CD4D04   [37]     	CALL	GETNIB		;Get nibble
+0442: DA2901   [47|47]  	JP	C,ERROR		;Report error
+0445: B0       [51]     	OR	B		;Add in high
+0446: C9       [61]     	RET
+                        ;
+                        ; Get a byte into A, allow different 1st char
+                        ;
+0447: CD4D04   [17]     GETHEXC	CALL	GETNIB		;Get nibble
+044A: 30EE     [24|29]  	JR	NC,geth1	;All is OK
+044C: C9       [34]     	RET
+                        ;
+                        ; Get nibble into A
+                        ;
+044D: CD6204   [17]     GETNIB	CALL	GETC		;Get char
+0450: FE30     [24]     	CP	'0'		;In range
+0452: D8       [29|35]  	RET	C		;Error
+0453: D630     [36]     	SUB	'0'		;Convert number
+0455: FE0A     [43]     	CP	$0A		;0-9?
+0457: 3F       [47]     	CCF			;Toggle 'C' state (1=error)
+0458: D0       [52|58]  	RET	NC		;Yes, its OK
+0459: D607     [59]     	SUB	7		;Convert alpha
+045B: FE0A     [66]     	CP	$0A		;In range?
+045D: D8       [71|77]  	RET	C		;Error
+045E: FE10     [78]     	CP	$10		;In range?
+0460: 3F       [82]     	CCF			;Toggle carry state
+0461: C9       [92]     	RET
+                        ;
+                        ; Read character from the console
+                        ;
+0462: C5       [11]     GETC	PUSH	BC		;Save for later
+0463: 3A1078   [24]     	LD	A,(IOCTL)	;Get I/O control byte
+0466: 47       [28]     	LD	B,A		;Copy for later
+0467: CDA50F   [17]     getc1	CALL	TESTC		;Test for character
+046A: A7       [21]     	AND	A		;Any data?
+046B: 28FA     [28|33]  	JR	Z,getc1		;Keep trying
+                        ; Test for echo
+046D: CB70     [36]     	BIT	6,B		;Test bit flag
+046F: 2803     [43|48]  	JR	Z,getc2		;Do not echo
+0471: CDAD0F   [60]     	CALL	PUTC		;Output
+                        ; Test for convert to upper case
+0474: CB68     [ 8]     getc2	BIT	5,B		;Test bit flags
+0476: 2806     [15|20]  	JR	Z,getc3		;Do not convert
+0478: FE61     [22]     	CP	'a'		;Need conversion?
+047A: 3802     [29|34]  	JR	C,getc3		;No, skip it
+047C: E65F     [36]     	AND	%01011111	;Convert to upper
+047E: C1       [10]     getc3	POP	BC		;Restore
+047F: C9       [20]     	RET
+                        ;
+                        ; Get address into H:L
+                        ;
+0480: CD3404   [17]     GETADR	CALL	GETHEX		;Get HIGH
+0483: 67       [ 4]     geta1	LD	H,A		;Save HIGH
+0484: CD3404   [21]     	CALL	GETHEX		;Get LOW
+0487: 6F       [25]     	LD	L,A		;Save LOW
+0488: C9       [35]     	RET
+                        ;
+                        ; Get range of address into HL:DE
+                        ;
+0489: 010000   [10]     GETRANG	LD	BC,0		;Get default
+048C: CD9D04   [27]     	CALL	GETADRD		;Get first
+048F: EB       [31]     	EX	DE,HL		;Swap
+0490: 3E2C     [38]     	LD	A,','		;Separator
+0492: CDAD0F   [55]     	CALL	PUTC		;Write it
+0495: 01FFFF   [65]     	LD	BC,$FFFF	;Get default
+0498: CD9D04   [82]     	CALL	GETADRD		;Get address
+049B: EB       [86]     	EX	DE,HL		;Swap
+049C: C9       [96]     	RET
+                        ;
+                        ; Get address into H:L and allow extra char for default address
+                        ;
+049D: CD4704   [17]     GETADRD	CALL	GETHEXC		;Get HIGH
+04A0: 30E1     [24|29]  	JR	NC,geta1	;Normal
+04A2: FE20     [31]     	CP	' '		;Space?
+04A4: C22901   [41|41]  	JP	NZ,ERROR	;Error
+04A7: 3E08     [48]     	LD	A,8		;Backspace
+04A9: CDAD0F   [65]     	CALL	PUTC		;Output
+04AC: 60       [69]     	LD	H,B		;Get HIGH
+04AD: 69       [73]     	LD	L,C		;Get LOW
+                        ;
+                        ; Write address (HL) to console in HEX
+                        ;
+04AE: 7C       [ 4]     WRADDR	LD	A,H		;Get high
+04AF: CDB304   [21]     	CALL	WRBYTE		;Output
+04B2: 7D       [25]     	LD	A,L		;Get LOW
+                        ;
+                        ; Write byte (A) to console in HEX
+                        ;
+04B3: F5       [11]     WRBYTE	PUSH	AF		;Save ACC
+04B4: CB1F     [19]     	RR	A		;Shift it
+04B6: CB1F     [27]     	RR	A		;Over one
+04B8: CB1F     [35]     	RR	A		;Nibble to
+04BA: CB1F     [43]     	RR	A		;High
+04BC: CDC004   [60]     	CALL	WRNIB		;Output high nibble
+04BF: F1       [70]     	POP	AF		;Restore ACC
+                        ;
+                        ; Write nibble (A) to console
+                        ;
+04C0: F5       [11]     WRNIB	PUSH	AF		;Save ACC
+04C1: E60F     [18]     	AND	%00001111	;Mask high
+04C3: FE0A     [25]     	CP	$0A		;In range?
+04C5: 3802     [32|37]  	JR	C,wrnib1	;Yes, its OK
+04C7: C607     [39]     	ADD	A,7		;Adjust
+04C9: C630     [ 7]     wrnib1	ADD	A,'0'		;Convert to printable
+04CB: CDAD0F   [24]     	CALL	PUTC		;Output
+04CE: F1       [34]     	POP	AF		;Restore
+04CF: C9       [44]     	RET
+                        ;
+                        ; Write Line-Feed, Carriage-Return to console
+                        ;
+04D0: CDA50F   [17]     LFCR	CALL	TESTC		;Test for character
+04D3: FE1B     [24]     	CP	$1B		;Quit
+04D5: CAE700   [34|34]  	JP	Z,ENTMON	;Enter monitor
+04D8: FE0D     [41]     	CP	$0D		;Release output?
+04DA: 200A     [48|53]  	JR	NZ,lfcr1	;No, try next
+04DC: 3A1078   [61]     	LD	A,(IOCTL)	;Get I/O control byte
+04DF: E67F     [68]     	AND	%01111111	;Clear pause bit
+04E1: 321078   [81]     	LD	(IOCTL),A	;Resave
+04E4: 1816     [93]     	JR	lfcr4		;Resume output
+04E6: FE20     [ 7]     lfcr1	CP	' '		;Pause output
+04E8: 200B     [14|19]  	JR	NZ,lfcr2	;No, try next
+04EA: 3A1078   [27]     	LD	A,(IOCTL)	;Get I/O control byte
+04ED: EE80     [34]     	XOR	%10000000	;Toggle pause bit
+04EF: F2FC04   [44|44]  	JP	P,lfcr4		;Already set, allow 1 line
+04F2: 321078   [57]     	LD	(IOCTL),A	;Resave control byte
+04F5: 3A1078   [13]     lfcr2	LD	A,(IOCTL)	;Get I/O control bit
+04F8: A7       [17]     	AND	A		;Test pause bit
+04F9: FAD004   [27|27]  	JP	M,LFCR		;Paused - wait
+04FC: 3E0A     [ 7]     lfcr4	LD	A,$0A		;Get LF
+04FE: CDAD0F   [24]     	CALL	PUTC		;Output it
+0501: 3E0D     [31]     	LD	A,$0D		;Get CR
+0503: C3AD0F   [41]     	JP	PUTC		;Output & return
+                        ;
+                        ; Write a space to the console
+                        ;
+0506: 3E20     [ 7]     SPACE	LD	A,' '		;Get space
+0508: C3AD0F   [17]     	JP	PUTC		;Output
+                        ;
+                        ; Write message (PC) to the console
+                        ;
+050B: E1       [10]     WRMSG	POP	HL		;Get pointer to message
+050C: CD1005   [27]     	CALL	WRSTR		;Output the string
+050F: E9       [31]     	JP	(HL)		;Execute at end
+                        ;
+                        ; Write string (HL) to the console
+                        ;
+0510: 7E       [ 7]     WRSTR	LD	A,(HL)		;Get character
+0511: 23       [13]     	INC	HL		;Advance to next
+0512: A7       [17]     	AND	A		;Last one?
+0513: C8       [22|28]  	RET	Z		;Yes, quit
+0514: CDAD0F   [39]     	CALL	PUTC		;Output
+0517: 18F7     [51]     	JR	WRSTR		;Get next
+                        ;
+                        ; Disassemble instruction (HL) and display on screen
+                        ;
+                        ; Display address for disassembly
+0519: 222978   [16]     DISASM	LD	(TEMP),HL	;Save address
+051C: CDAE04   [33]     	CALL	WRADDR		;Output address
+                        ; Disassembly instruction into memory buffer
+051F: D5       [44]     	PUSH	DE		;Save DE
+0520: C5       [55]     	PUSH	BC		;Save BC
+0521: CD7C05   [72]     	CALL	disass		;Disassemble the code into buffer
+                        ; Display the instruction bytes in HEX
+0524: EB       [76]     	EX	DE,HL		;DE = end address
+0525: 2A2978   [92]     	LD	HL,(TEMP)	;Get starting address
+0528: 0605     [99]     	LD	B,5		;Max spaces
+052A: CD0605   [17]     dis1	CALL	SPACE		;Space over
+052D: 7E       [24]     	LD	A,(HL)		;Get data
+052E: 23       [30]     	INC	HL		;Skip to next
+052F: CDB304   [47]     	CALL	WRBYTE		;Output
+0532: 05       [51]     	DEC	B		;Reduce count
+0533: CD5502   [68]     	CALL	CHLDE		;Are we at end?
+0536: 20F2     [75|80]  	JR	NZ,dis1		;No, keep going
+0538: CD0605   [17]     dis2	CALL	SPACE		;Filler
+053B: CD0605   [34]     	CALL	SPACE		;Filler
+053E: CD0605   [51]     	CALL	SPACE		;Filler
+0541: 10F5     [59|64]  	DJNZ	dis2		;Do them all
+                        ; Display instruction bytes as ASCII
+0543: 2A2978   [75]     	LD	HL,(TEMP)	;Get starting address
+0546: 0608     [82]     	LD	B,8		;Max spaces
+0548: 7E       [ 7]     dis3	LD	A,(HL)		;Get data
+0549: 23       [13]     	INC	HL		;Advance to next
+054A: CD5B02   [30]     	CALL	WRPRINT		;Display
+054D: 05       [34]     	DEC	B		;Reduce count
+054E: CD5502   [51]     	CALL	CHLDE		;Are we at end?
+0551: 20F5     [58|63]  	JR	NZ,dis3		;No, keep going
+0553: CD0605   [17]     dis4	CALL	SPACE		;Filler
+0556: 10FB     [25|30]  	DJNZ	dis4		;Do them all
+                        ; Display contents of disassembly buffer
+0558: DD212D78 [39]     	LD	IX,BUFFER	;Point to buffer
+055C: DD7E00   [19]     dis5	LD	A,(IX)		;Get data from memory
+055F: A7       [23]     	AND	A		;End of list
+0560: 2817     [30|35]  	JR	Z,dis8		;Yes, stop
+0562: DD23     [40]     	INC	IX		;Advance
+0564: FE20     [47]     	CP	' '		;Special case?
+0566: 2806     [54|59]  	JR	Z,dis7		;Handle it
+0568: CDAD0F   [71]     	CALL	PUTC		;Output
+056B: 04       [75]     	INC	B		;Advance count
+056C: 18EE     [87]     	JR	dis5		;And continue
+056E: CD0605   [17]     dis7	CALL	SPACE		;Output space
+0571: 04       [21]     	INC	B		;Advance count
+0572: 78       [25]     	LD	A,B		;Get count
+0573: E607     [32]     	AND	%00000111	;8 character tab
+0575: 20F7     [39|44]  	JR	NZ,dis7		;Do all spaces
+0577: 18E3     [51]     	JR	dis5		;Continue
+0579: C1       [10]     dis8	POP	BC		;Restore BC
+057A: D1       [20]     	POP	DE		;Restore DE
+057B: C9       [30]     	RET
+                        ;
+                        ; Disassemble instruction (HL) and place in memory buffer (IX)
+                        ;
+                        ; Lookup opcode (HL) in table
+057C: 7E       [ 7]     disass	LD	A,(HL)		;Get opcode
+057D: 23       [13]     	INC	HL		;Skip to next
+057E: 11CF0A   [23]     	LD	DE,DTABCB	;Ready CB table
+0581: FECB     [30]     	CP	$CB		;CB prefix?
+0583: 2819     [37|42]  	JR	Z,disa1		;Yes
+0585: 11190B   [47]     	LD	DE,DTABDD	;Ready DD table
+0588: FEDD     [54]     	CP	$DD		;DD prefix?
+058A: 2812     [61|66]  	JR	Z,disa1		;Yes
+058C: 11010D   [71]     	LD	DE,DTABED	;Ready ED table
+058F: FEED     [78]     	CP	$ED		;ED prefix?
+0591: 280B     [85|90]  	JR	Z,disa1		;Yes
+0593: 110D0C   [95]     	LD	DE,DTABFD	;Read FD prefix
+0596: FEFD     [102]    	CP	$FD		;FD prefix?
+0598: 2804     [109|114]	JR	Z,disa1		;Yes
+059A: 111009   [119]    	LD	DE,DTAB		;Switch to normal table
+059D: 2B       [125]    	DEC	HL		;Backup
+059E: 7E       [ 7]     disa1	LD	A,(HL)		;Get opcode
+059F: 23       [13]     	INC	HL		;Advance to next
+05A0: 322B78   [26]     	LD	(TEMP1),A	;Save opcode for later
+05A3: 47       [30]     	LD	B,A		;Save opcode for later
+                        ; Lookup opcode (B) in table (DE)
+05A4: 1A       [37]     	LD	A,(DE)		;Get mask
+05A5: 13       [43]     	INC	DE		;Advance to next
+05A6: A0       [ 4]     disa2	AND	B		;Get masked opcode
+05A7: 4F       [ 8]     	LD	C,A		;Save for later
+05A8: 1A       [15]     	LD	A,(DE)		;Get table opcode
+05A9: 13       [21]     	INC	DE		;Skip it
+05AA: B9       [25]     	CP	C		;Compare against masked opcode
+05AB: 280A     [32|37]  	JR	Z,disa4		;We found it!
+                        ; This one isn't it, skip to the next one
+05AD: 1A       [ 7]     disa3	LD	A,(DE)		;Get data from table
+05AE: 13       [13]     	INC	DE		;Skip to next
+05AF: A7       [17]     	AND	A		;End of entry?
+05B0: 20FB     [24|29]  	JR	NZ,disa3	;Keep looking
+05B2: 1A       [31]     	LD	A,(DE)		;Get next mask
+05B3: 13       [37]     	INC	DE		;Skip it
+05B4: A7       [41]     	AND	A		;End of table?
+05B5: 20EF     [48|53]  	JR	NZ,disa2	;Keep looking
+                        ; We found opcode, handle it
+05B7: DD212D78 [14]     disa4	LD	IX,BUFFER	;Point to output buffer
+                        ; Move data from disassembly table to output buffer with translations
+05BB: 1A       [ 7]     disa5	LD	A,(DE)		;Get char from table
+05BC: A7       [11]     	AND	A		;End of table?
+05BD: CAA906   [21|21]  	JP	Z,disa900	;We are finished
+05C0: 13       [27]     	INC	DE		;Advance to next
+05C1: FAA106   [37|37]  	JP	M,disa100	;Special substuted symbol
+                        ; Test for 's' source register
+05C4: FE73     [44]     	CP	's'		;Source register
+05C6: 2021     [51|56]  	JR	NZ,disa7	;No, try next
+05C8: 3A2B78   [64]     	LD	A,(TEMP1)	;Get opcode back
+05CB: E607     [ 7]     disa6	AND	%00000111	;Allow only 8 entries
+05CD: 010008   [17]     	LD	BC,REGTAB	;Point to table
+05D0: E5       [11]     disa61	PUSH	HL		;Save HL
+05D1: 6F       [15]     	LD	L,A		;Get ID number
+05D2: 2600     [22]     	LD	H,0		;Zero high
+05D4: 29       [33]     	ADD	HL,HL		;x2
+05D5: 29       [44]     	ADD	HL,HL		;x4
+05D6: 09       [55]     	ADD	HL,BC		;Offset to table
+05D7: 0E04     [62]     	LD	C,4		;Max four chars
+05D9: 7E       [ 7]     disa62	LD	A,(HL)		;Get char
+05DA: A7       [11]     	AND	A		;Premature end?
+05DB: 2809     [18|23]  	JR	Z,disa63	;Exit
+05DD: 23       [24]     	INC	HL		;Advance
+05DE: DD7700   [43]     	LD	(IX),A		;Write to buffer
+05E1: DD23     [53]     	INC	IX		;Advance buffer
+05E3: 0D       [57]     	DEC	C		;Reduce count
+05E4: 20F3     [64|69]  	JR	NZ,disa62	;Do them all
+05E6: E1       [10]     disa63	POP	HL		;Restore HL
+05E7: 18D2     [22]     	JR	disa5		;Do next entry
+                        ; Test for 'd' destination register
+05E9: FE64     [ 7]     disa7	CP	'd'		;Destination register?
+05EB: 2008     [14|19]  	JR	NZ,disa8	;No, try next
+05ED: 3A2B78   [27]     	LD	A,(TEMP1)	;Get opcode back
+05F0: 1F       [31]     	RRA			;Shift
+05F1: 1F       [35]     	RRA			;Over into
+05F2: 1F       [39]     	RRA			;Source position
+05F3: 18D6     [51]     	JR	disa6		;And output
+                        ; Test for 'p' register pair
+05F5: FE70     [ 7]     disa8	CP	'p'		;Register pair
+05F7: 200E     [14|19]  	JR	NZ,disa9	;No, try next
+05F9: 012008   [24]     	LD	BC,RPTAB	;Point to table
+05FC: 3A2B78   [13]     disa81	LD	A,(TEMP1)	;Get opcode back
+05FF: 1F       [17]     	RRA			;Shift
+0600: 1F       [21]     	RRA			;Over into
+0601: 1F       [25]     	RRA			;Low bits of
+0602: 1F       [29]     	RRA			;Acc
+0603: E603     [36]     	AND	%00000011	;Mask off
+0605: 18C9     [48]     	JR	disa61		;Output and proceed
+                        ; Test for 'b', byte operand
+0607: FE62     [ 7]     disa9	CP	'b'		;Byte operand?
+0609: 2007     [14|19]  	JR	NZ,disa10	;No, try next
+060B: 7E       [21]     	LD	A,(HL)		;Get data from memory
+060C: 23       [27]     	INC	HL		;Advance
+060D: CDAE06   [17]     disa91	CALL	IXBYTE		;Write it
+0610: 18A9     [29]     	JR	disa5		;And proceed
+                        ; Test for 'w', word operand
+0612: FE77     [ 7]     disa10	CP	'w'		;Word operand
+0614: 200D     [14|19]  	JR	NZ,disa11	;No, try next
+0616: 46       [21]     	LD	B,(HL)		;Get low
+0617: 23       [27]     	INC	HL		;Advanve
+0618: 7E       [34]     	LD	A,(HL)		;Get HIGH
+0619: 23       [40]     	INC	HL		;Advanve
+061A: CDAE06   [57]     	CALL	IXBYTE		;output
+061D: 78       [61]     	LD	A,B		;Get LOW
+061E: CDAE06   [78]     	CALL	IXBYTE		;Output
+0621: 1898     [90]     	JR	disa5		;And proceed
+                        ; Test for 'x' register pair IX=HL
+0623: FE78     [ 7]     disa11	CP	'x'		;IX pair?
+0625: 2005     [14|19]  	JR	NZ,disa12	;No, try next
+0627: 013008   [24]     	LD	BC,RPTABX	;Point to special table
+062A: 18D0     [36]     	JR	disa81		;And process
+                        ; Test for 'y' register pair IY=HL
+062C: FE79     [ 7]     disa12	CP	'y'		;IY pair?
+062E: 2005     [14|19]  	JR	NZ,disa13	;No, try next
+0630: 014008   [24]     	LD	BC,RPTABY	;Point to special table
+0633: 18C7     [36]     	JR	disa81		;And process
+                        ; Test for 'c' condition code specification
+0635: FE63     [ 7]     disa13	CP	'c'		;Condition code
+0637: 200D     [14|19]  	JR	NZ,disa14	;No, try next
+0639: 3A2B78   [27]     	LD	A,(TEMP1)	;Get opcode
+063C: 1F       [31]     	RRA			;Shift
+063D: 1F       [35]     	RRA			;Over to
+063E: 1F       [39]     	RRA			;Zero base
+063F: E607     [46]     	AND	%00000111	;Mask unused bit
+0641: 015008   [56]     	LD	BC,CCTAB	;Point to table
+0644: 188A     [68]     	JR	disa61		;And process
+                        ; Test for 'r' relative address
+0646: FE72     [ 7]     disa14	CP	'r'		;Relative address?
+0648: 2017     [14|19]  	JR	NZ,disa15	;No, try next
+064A: 7E       [21]     	LD	A,(HL)		;Get value
+064B: 23       [27]     	INC	HL		;Skip operand
+064C: 0600     [34]     	LD	B,0		;Assume zero carry
+064E: A7       [38]     	AND	A		;Test for negative
+064F: F25306   [48|48]  	JP	P,disa14a	;Assumption correct
+0652: 05       [52]     	DEC	B		;Adjust to negative
+0653: 85       [ 4]     disa14a	ADD	A,L		;Compute lower
+0654: 4F       [ 8]     	LD	C,A		;Save for later
+0655: 7C       [12]     	LD	A,H		;Get HIGH
+0656: 88       [16]     	ADC	A,B		;Compute high
+0657: CDAE06   [33]     	CALL	IXBYTE		;Write it
+065A: 79       [37]     	LD	A,C		;Get LOW
+065B: CDAE06   [54]     	CALL	IXBYTE		;Write it
+065E: C3BB05   [64]     	JP	disa5		;And proceed
+                        ; Test for 'z', special double prefix
+0661: FE7A     [ 7]     disa15	CP	'z'		;Special mode?
+0663: 201D     [14|19]  	JR	NZ,disa16	;No, try next
+0665: 7E       [21]     	LD	A,(HL)		;Get operand 'd' byte
+0666: 322C78   [34]     	LD	(TEMP2),A	;Save for later
+0669: 23       [40]     	INC	HL		;Advance
+066A: 7E       [47]     	LD	A,(HL)		;Get post byte
+066B: 322B78   [60]     	LD	(TEMP1),A	;Save for later
+066E: 47       [64]     	LD	B,A		;Save for later
+066F: 1A       [71]     	LD	A,(DE)		;Get Mask
+0670: A0       [75]     	AND	B		;Get masked opcode
+0671: 4F       [79]     	LD	C,A		;Save for later
+0672: 13       [85]     	INC	DE		;Advance to opcode
+0673: 1A       [92]     	LD	A,(DE)		;Get required opcode
+0674: 13       [98]     	INC	DE		;Skip to next
+0675: B9       [102]    	CP	C		;Does it match?
+0676: 2806     [109|114]	JR	Z,disa15a	;Yes, we have it
+0678: 2B       [115]    	DEC	HL		;No fix error
+0679: 06CB     [122]    	LD	B,$CB		;Get opcode
+067B: C3AD05   [132]    	JP	disa3		;Keep going
+067E: 23       [ 6]     disa15a	INC	HL		;Advance to next
+067F: C3BB05   [16]     	JP	disa5		;And proceed
+                        ; Test for 'v', special post d byte
+0682: FE76     [ 7]     disa16	CP	'v'		;Specal post dbyte
+0684: 2005     [14|19]  	JR	NZ,disa17	;No, try next
+0686: 3A2C78   [27]     	LD	A,(TEMP2)	;Get postbyte
+0689: 1882     [39]     	JR	disa91		;Output & proceed
+                        ; Test for 'n' numeric value from opcode
+068B: FE6E     [ 7]     disa17	CP	'n'		;Numeric value
+068D: 200A     [14|19]  	JR	NZ,disa18	;No, try next
+068F: 3A2B78   [27]     	LD	A,(TEMP1)	;Get opcode back
+0692: 1F       [31]     	RRA
+0693: 1F       [35]     	RRA
+0694: 1F       [39]     	RRA
+0695: E607     [46]     	AND	%00000111	;Save only number
+0697: C630     [53]     	ADD	A,'0'		;Convert to ASCII
+                        ; No special operation
+0699: DD7700   [19]     disa18	LD	(IX),A		;Copy to buffer
+069C: DD23     [29]     	INC	IX		;Advance
+069E: C3BB05   [39]     	JP	disa5		;And continue
+                        ; Write special opcode
+06A1: E67F     [ 7]     disa100	AND	%01111111	;Clear high bit
+06A3: 017008   [17]     	LD	BC,TABTAB	;Point to table
+06A6: C3D005   [27]     	JP	disa61		;Output and proceed
+                        ; End of disassembly
+06A9: DD360000 [19]     disa900	LD	(IX),0		;Zero terminate
+06AD: C9       [29]     	RET
+                        ;
+                        ; Write byte (A) to (IX)
+                        ;
+06AE: F5       [11]     IXBYTE	PUSH	AF		;Save ACC
+06AF: CB1F     [19]     	RR	A		;Shift it
+06B1: CB1F     [27]     	RR	A		;Over one
+06B3: CB1F     [35]     	RR	A		;Nibble to
+06B5: CB1F     [43]     	RR	A		;High
+06B7: CDBB06   [60]     	CALL	IXNIB		;Output high nibble
+06BA: F1       [70]     	POP	AF		;Restore ACC
+06BB: F5       [11]     IXNIB	PUSH	AF		;Save ACC
+06BC: E60F     [18]     	AND	%00001111	;Mask high
+06BE: FE0A     [25]     	CP	$0A		;In range?
+06C0: 3802     [32|37]  	JR	C,ixnib1	;Yes, its OK
+06C2: C607     [39]     	ADD	A,7		;Adjust
+06C4: C630     [ 7]     ixnib1	ADD	A,'0'		;Convert to printable
+06C6: DD7700   [26]     	LD	(IX),A		;Write to string
+06C9: DD23     [36]     	INC	IX		;Advance
+06CB: F1       [46]     	POP	AF		;Restore
+06CC: C9       [56]     	RET
+                        ;
+                        ;---------------------------------
+                        ; Single step one instruction (HL)
+                        ;---------------------------------
+                        ;
+                        
+06CD: 2A0C78   [16]     GOSTEP	LD	HL,(uPC)	;Get user PC
+06D0: E5       [27]     		PUSH HL			;Save for later
+06D1: CD7C05   [44]     		CALL disass		;Disassemble (no display) (case bug fixed)
+06D4: C1       [54]     		POP	BC			;C = copy of lower
+06D5: 7D       [ 4]     GOSTEP1	LD	A,L			;Get low address
+06D6: 91       [ 8]     		SUB	C			;Compute length
+06D7: 4F       [12]     		LD	C,A			;Set LOW count value
+06D8: 0600     [19]     		LD	B,0			;Zero high
+                        ; Copy code into buffer for execution (if necessary)
+06DA: 2A0C78   [35]     		LD	HL,(uPC)	;Point to code address
+06DD: 112D78   [45]     		LD	DE,BUFFER	;Point to buffer
+06E0: EDB0     [61|21]  		LDIR			;Copy instruction into buffer
+06E2: 220C78   [77]     		LD	(uPC),HL	;Update program counter
+06E5: EB       [81]     		EX	DE,HL		;Hl = buffer address
+06E6: 36C3     [91]     		LD	(HL),$C3	;Jump instruction
+06E8: 23       [97]     		INC	HL			;Advance
+06E9: 362E     [107]    		LD	(HL),STEPRET & $FF ;Write low address
+06EB: 23       [113]    		INC	HL			;Advance
+06EC: 3607     [123]    		LD  (HL),STEPRET >> 8  ;Write high address
+                        ; Test instruction to see if it affects program control
+06EE: 3A2D78   [136]    		LD	A,(BUFFER)	;Get opcode
+06F1: 4F       [140]    		LD	C,A			;C = opcode
+06F2: 21CF0D   [150]    		LD	HL,EFTAB	;Point to execution flow table
+06F5: 0610     [157]    		LD B,EFSIZE    	;Get size of table
+06F7: 7E       [ 7]     step1	LD	A,(HL)		;Get mask
+06F8: 23       [13]     		INC	HL			;Advance
+06F9: A1       [17]     		AND	C			;Get masked opcode
+06FA: BE       [24]     		CP	(HL)		;Compare against opcode
+06FB: 23       [30]     		INC	HL			;Skip to next
+06FC: 282B     [37|42]  		JR	Z,step3		;Execute
+06FE: 23       [43]     		INC	HL			;Skip LOW address
+06FF: 23       [49]     		INC	HL		    ;Skip HIGH address
+0700: 10F5     [57|62]  		DJNZ step1		;Keep looking
+                        ; Restore user registers and execute instruction in buffer
+0702: 210000   [10]     step2	LD	HL,0		;Get zero
+0705: 39       [21]     		ADD	HL,SP		;Get stack
+0706: 222B78   [37]     		LD	(TEMP1),HL	;Save stack
+0709: DD2A0878 [57]     		LD	IX,(uIX)	;Get IX
+070D: FD2A0A78 [77]     		LD	IY,(uIY)	;Get IY
+0711: 2A0278   [93]     		LD	HL,(uBC)	;Get BC
+0714: 44       [97]     		LD	B,H			;Copy
+0715: 4D       [101]    		LD	C,L			;Copy
+0716: 2A0478   [117]    		LD	HL,(uDE)	;Get DE
+0719: EB       [121]    		EX	DE,HL		;Copy
+071A: 2A0078   [137]    		LD	HL,(uAF)	;Get AF
+071D: E5       [148]    		PUSH HL			;Save
+071E: F1       [158]    		POP	AF			;Copy
+071F: 2A0E78   [174]    		LD	HL,(uSP)	;Get user SP
+0722: F9       [180]    		LD	SP,HL		;Copy
+0723: 2A0678   [196]    		LD	HL,(uHL)	;Get user HL
+0726: C32D78   [206]    		JP	BUFFER		;Execute user program
+                        ; Execute handler for special instructions requiring interpretation
+0729: 7E       [ 7]     step3	LD	A,(HL)		;Get LOW address
+072A: 23       [13]     		INC	HL			;Skip to next
+072B: 66       [20]     		LD	H,(HL)		;Get HIGH address
+072C: 6F       [24]     		LD	L,A			;Set LOW address
+072D: E9       [28]     		JP	(HL)		;Execute handler
+                        ; Return from single step. Like breakpoint, but no PC
+072E: 220678   [16]     STEPRET	LD	(uHL),HL	;Save HL
+0731: F5       [27]     		PUSH	AF		;Get AF
+0732: E1       [37]     		POP	HL			;Copy
+0733: 220078   [53]     		LD	(uAF),HL	;Save AF
+0736: 210000   [63]     		LD	HL,0		;Get 0
+0739: 39       [74]     		ADD	HL,SP		;Get SP
+073A: 220E78   [90]     		LD	(uSP),HL	;Save SP
+073D: EB       [94]     		EX	DE,HL		;Get DE
+073E: 220478   [110]    		LD	(uDE),HL	;Save DE
+0741: 60       [114]    		LD	H,B			;Get B
+0742: 69       [118]    		LD	L,C			;Get C
+0743: 220278   [134]    		LD	(uBC),HL	;Save BC
+0746: DD220878 [154]    		LD	(uIX),IX	;Save IX
+074A: FD220A78 [174]    		LD	(uIY),IY	;Save IY
+074E: 2A2B78   [190]    		LD	HL,(TEMP1)	;Get our stack
+0751: F9       [196]    		LD	SP,HL		;Set out stack
+0752: C9       [206]    		RET
+                        ;
+                        ; DD prefix's
+                        ;
+0753: 3A2E78   [13]     EXDDP	LD	A,(BUFFER+1)	;Get opcode
+0756: FEE9     [20]     	CP	$E9		;JP (IX)?
+0758: 20A8     [27|32]  	JR	NZ,step2	;No, execute
+075A: 2A0878   [43]     	LD	HL,(uIX)	;Get user IX
+075D: 1867     [55]     	JR	GOHL		;And execute
+                        ;
+                        ; FD prefix's
+                        ;
+075F: 3A2E78   [13]     EXFDP	LD	A,(BUFFER+1)	;Get opcode
+0762: FEE9     [20]     	CP	$E9		;JP (IY)?
+0764: 209C     [27|32]  	JR	NZ,step2	;No, execute
+0766: 2A0A78   [43]     	LD	HL,(uIY)	;Get user IY
+0769: 185B     [55]     	JR	GOHL		;And proceed
+                        ;
+                        ; Restart instruction
+                        ;
+076B: 79       [ 4]     EXRST	LD	A,C		;Get opcode
+076C: E638     [11]     	AND	%00111000	;Save number*8
+076E: 6F       [15]     	LD	L,A		;Set LOW
+076F: 2600     [22]     	LD	H,0		;Set high
+0771: 220C78   [38]     	LD	(uPC),HL	;Set new address
+0774: C9       [48]     	RET
+                        ;
+                        ; Jump indirect through HL
+                        ;
+0775: 2A0678   [16]     EXJPHL	LD	HL,(uHL);	;Get HL register
+0778: 184C     [28]     	JR	GOHL		;Set new address
+                        ;
+                        ; Conditional JR's
+                        ;
+077A: 0E18     [ 7]     EXJRC	LD	C,%00011000	;Get 'C' condition
+077C: 180A     [19]     	JR	EXJPC		;Execute conditional
+077E: 0E10     [ 7]     EXJRNC	LD	C,%00010000	;Get 'NC' condition
+0780: 1806     [19]     	JR	EXJPC		;Execute conditional
+0782: 0E08     [ 7]     EXJRZ	LD	C,%00001000	;Get 'Z' conditional
+0784: 1802     [19]     	JR	EXJPC		;Execute conditional
+0786: 0E00     [ 7]     EXJRNZ	LD	C,%00000000	;Get 'NZ' conditoinal
+                        ;
+                        ; Jump absolute conditional
+                        ;
+0788: CDE007   [17]     EXJPC	CALL	TESTCC		;Test condition code
+078B: 203C     [24|29]  	JR	NZ,EXSKP	;Not taken
+                        ;
+                        ; JP instruction
+                        ;
+078D: 2A2E78   [16]     EXJP	LD	HL,(BUFFER+1)	;Get operand
+0790: 1834     [28]     	JR	GOHL		;Execute
+                        ;
+                        ; DJNZ instruction
+                        ;
+0792: 3A0378   [13]     EXDJNZ	LD	A,(uBC+1)	;Get 'B' value
+0795: 3D       [17]     	DEC	A		;Adjust
+0796: 320378   [30]     	LD	(uBC+1),A	;Resave
+0799: 282E     [37|42]  	JR	Z,EXSKP		;Skip if zero
+                        ;
+                        ; JR instruction
+                        ;
+079B: 3A2E78   [13]     EXJR	LD	A,(BUFFER+1)	;Get offset
+079E: 4F       [17]     	LD	C,A		;Save it
+079F: 0600     [24]     	LD	B,0		;Assume positive
+07A1: A7       [28]     	AND	A		;Is it negative
+07A2: F2A607   [38|38]  	JP	P,exjr1		;No, assumption correct
+07A5: 05       [42]     	DEC	B		;Sign extend
+07A6: 2A0C78   [16]     exjr1	LD	HL,(uPC)	;Get user PC
+07A9: 09       [27]     	ADD	HL,BC		;Adjust for offset
+07AA: 181A     [39]     	JR	GOHL		;Set new address
+                        ;
+                        ; Conditional CALL
+                        ;
+07AC: CDE007   [17]     EXCALLC	CALL	TESTCC		;Test condition codes
+07AF: 2018     [24|29]  	JR	NZ,EXSKP	;Not taken
+                        ;
+                        ; CALL instruction
+                        ;
+07B1: 2A2E78   [16]     EXCALL	LD	HL,(BUFFER+1)	;Get operand
+                        ; Stack PC and reset to HL
+07B4: EB       [ 4]     GOHLS	EX	DE,HL		;Free HL
+07B5: 2A0E78   [20]     	LD	HL,(uSP)	;Get user SP
+07B8: 2B       [26]     	DEC	HL		;Backup stack
+07B9: 3A0D78   [39]     	LD	A,(uPC+1)	;Get HIGH pc
+07BC: 77       [46]     	LD	(HL),A		;Stack it
+07BD: 2B       [52]     	DEC	HL		;Backup stack
+07BE: 3A0C78   [65]     	LD	A,(uPC)		;Get LOW pc
+07C1: 77       [72]     	LD	(HL),A		;Stack it
+07C2: 220E78   [88]     	LD	(uSP),HL	;set HL
+07C5: EB       [92]     	EX	DE,HL		;Get address back
+07C6: 220C78   [16]     GOHL	LD	(uPC),HL	;Set new address
+07C9: C9       [10]     EXSKP	RET
+                        ;
+                        ; Conditional return
+                        ;
+07CA: CDE007   [17]     EXRETC	CALL	TESTCC		;Test condition codes
+07CD: 20FA     [24|29]  	JR	NZ,EXSKP	;Not taken
+                        ;
+                        ; Return instruction
+                        ;
+07CF: 2A0E78   [16]     EXRET	LD	HL,(uSP)	;Get user SP
+07D2: 7E       [23]     	LD	A,(HL)		;Get LOW address
+07D3: 320C78   [36]     	LD	(uPC),A		;Set it
+07D6: 23       [42]     	INC	HL		;Advance
+07D7: 7E       [49]     	LD	A,(HL)		;Get HIGH address
+07D8: 320D78   [62]     	LD	(uPC+1),A	;Set it
+07DB: 23       [68]     	INC	HL		;Advance
+07DC: 220E78   [84]     	LD	(uSP),HL	;Save new SP
+07DF: C9       [94]     	RET
+                        ;
+                        ; Test condition code (Opcode in C)
+                        ;
+07E0: 79       [ 4]     TESTCC	LD	A,C		;Get opcode
+07E1: E638     [11]     	AND	%00111000	;Save only condition code
+07E3: F6C2     [18]     	OR	%11000010	;Convert into 'JP C'
+07E5: 323178   [31]     	LD	(BUFFER+4),A	;Point to buffer
+07E8: 213578   [41]     	LD	HL,BUFFER+8	;Skip INC
+07EB: 223278   [57]     	LD	(BUFFER+5),HL	;Set offset
+07EE: 213CC9   [67]     	LD	HL,$C93C	;'INC A' + 'RET'
+07F1: 223478   [83]     	LD	(BUFFER+7),HL	;Set it
+07F4: 2A0078   [99]     	LD	HL,(uAF)	;Get A and flags
+07F7: 2600     [106]    	LD	H,0		;Zero 'A'
+07F9: E5       [117]    	PUSH	HL		;Stack it
+07FA: F1       [127]    	POP	AF		;Set A and F
+07FB: CD3178   [144]    	CALL	BUFFER+4	;Test code
+07FE: A7       [148]    	AND	A		;Zero means jump taken
+07FF: C9       [158]    	RET
+                        ;
+                        ; ---- Disassembly tables ----
+                        ;
+                        ; Register name tables
+0800: 42000000          REGTAB	DB	'B',0,0,0
+0804: 43000000          	DB	'C',0,0,0
+0808: 44000000          	DB	'D',0,0,0
+080C: 45000000          	DB	'E',0,0,0
+0810: 48000000          	DB	'H',0,0,0
+0814: 4C000000          	DB	'L',0,0,0
+0818: 28484C29          	DB	'(','H','L',')'
+081C: 41000000          	DB	'A',0,0,0
+                        ; Register pair name table
+0820: 42430000          RPTAB	DB	'B','C',0,0
+0824: 44450000          	DB	'D','E',0,0
+0828: 484C0000          	DB	'H','L',0,0
+082C: 53500000          	DB	'S','P',0,0
+0830: 42430000          RPTABX	DB	'B','C',0,0
+0834: 44450000          	DB	'D','E',0,0
+0838: 49580000          	DB	'I','X',0,0
+083C: 53500000          	DB	'S','P',0,0
+0840: 42430000          RPTABY	DB	'B','C',0,0
+0844: 44450000          	DB	'D','E',0,0
+0848: 49590000          	DB	'I','Y',0,0
+084C: 53500000          	DB	'S','P',0,0
+                        ; Condition code table
+0850: 4E5A0000          CCTAB	DB	'N','Z',0,0
+0854: 5A000000          	DB	'Z',0,0,0
+0858: 4E430000          	DB	'N','C',0,0
+085C: 43000000          	DB	'C',0,0,0
+0860: 504F0000          	DB	'P','O',0,0
+0864: 50450000          	DB	'P','E',0,0
+0868: 50000000          	DB	'P',0,0,0
+086C: 4D000000          	DB	'M',0,0,0
+                        ; Test abbreviations table
+0870:                   TABTAB	EQU	$
+0080:                   xLD	EQU	$80
+0870: 4C442000          	DB	'L','D',' ',0
+0081:                   xBC	EQU	$81
+0874: 42430000          	DB	'B','C',0,0
+0082:                   xDE	EQU	$82
+0878: 44450000          	DB	'D','E',0,0
+0083:                   xHL	EQU	$83
+087C: 484C0000          	DB	'H','L',0,0
+0084:                   xIX	EQU	$84
+0880: 49580000          	DB	'I','X',0,0
+0085:                   xIY	EQU	$85
+0884: 49590000          	DB	'I','Y',0,0
+0086:                   xBCI	EQU	$86
+0888: 28424329          	DB	'(','B','C',')'
+0087:                   xDEI	EQU	$87
+088C: 28444529          	DB	'(','D','E',')'
+0088:                   xHLI	EQU	$88
+0890: 28484C29          	DB	'(','H','L',')'
+0089:                   xIXI	EQU	$89
+0894: 2849582B          	DB	'(','I','X','+'
+008A:                   xIYI	EQU	$8A
+0898: 2849592B          	DB	'(','I','Y','+'
+008B:                   xACM	EQU	$8B
+089C: 412C0000          	DB	'A',',',0,0
+008C:                   xCMA	EQU	$8C
+08A0: 2C410000          	DB	',','A',0,0
+008D:                   xSP	EQU	$8D
+08A4: 53500000          	DB	'S','P',0,0
+008E:                   xPUSH	EQU	$8E
+08A8: 50555348          	DB	'P','U','S','H'
+008F:                   xPOP	EQU	$8F
+08AC: 504F5020          	DB	'P','O','P',' '
+0090:                   xAF	EQU	$90
+08B0: 41460000          	DB	'A','F',0,0
+0091:                   xEX	EQU	$91
+08B4: 45580000          	DB	'E','X',0,0
+0092:                   xLDx	EQU	$92
+08B8: 4C440000          	DB	'L','D',0,0
+0093:                   xCP	EQU	$93
+08BC: 43500000          	DB	'C','P',0,0
+0094:                   xADD	EQU	$94
+08C0: 41444420          	DB	'A','D','D',' '
+0095:                   xADC	EQU	$95
+08C4: 41444320          	DB	'A','D','C',' '
+0096:                   xSUB	EQU	$96
+08C8: 53554220          	DB	'S','U','B',' '
+0097:                   xSBC	EQU	$97
+08CC: 53424320          	DB	'S','B','C',' '
+0098:                   xAND	EQU	$98
+08D0: 414E4420          	DB	'A','N','D',' '
+0099:                   xOR	EQU	$99
+08D4: 4F522000          	DB	'O','R',' ',0
+009A:                   xXOR	EQU	$9A
+08D8: 584F5220          	DB	'X','O','R',' '
+009B:                   xINC	EQU	$9B
+08DC: 494E4320          	DB	'I','N','C',' '
+009C:                   xDEC	EQU	$9C
+08E0: 44454320          	DB	'D','E','C',' '
+009D:                   xRL	EQU	$9D
+08E4: 524C0000          	DB	'R','L',0,0
+009E:                   xRR	EQU	$9E
+08E8: 52520000          	DB	'R','R',0,0
+009F:                   xJP	EQU	$9F
+08EC: 4A502000          	DB	'J','P',' ',0
+00A0:                   xJR	EQU	$A0
+08F0: 4A522000          	DB	'J','R',' ',0
+00A1:                   xCALL	EQU	$A1
+08F4: 43414C4C          	DB	'C','A','L','L'
+00A2:                   xRET	EQU	$A2
+08F8: 52455400          	DB	'R','E','T',0
+00A3:                   xIN	EQU	$A3
+08FC: 494E0000          	DB	'I','N',0,0
+00A4:                   xOUT	EQU	$A4
+0900: 4F555400          	DB	'O','U','T',0
+00A5:                   xBIT	EQU	$A5
+0904: 42495420          	DB	'B','I','T',' '
+00A6:                   xSET	EQU	$A6
+0908: 53455420          	DB	'S','E','T',' '
+00A7:                   xRES	EQU	$A7
+090C: 52455320          	DB	'R','E','S',' '
+                        ;
+                        ; ---- Opcode Disassembly table ----
+                        ; d = reg from bits 00111000 of opcode
+                        ; s = reg from bits 00000111 of opcode
+                        ; p = reg pair1 from bits 00110000 of opcode
+                        ; x = reg pair2 with IX instead of HL
+                        ; y = reg pair3 with IY instead of HL
+                        ; b = byte value from next memory location
+                        ; w = word value from next memory location
+                        ; c = conditional code from bite 00111000 of opcode
+                        ; r = relative address from next memory location
+                        ; n = numeric value from bite 00111000 of opcode
+                        ; z = special double prefix opcode
+                        ; v = special 'd' value saved from 'z'
+                        ;
+0910: FF764841          DTAB	DB	$FF,$76,'H','A','L','T',0
+0914: 4C5400            
+0917: C0408064          	DB	$C0,$40,xLD,'d',',','s',0
+091B: 2C7300            
+091E: C7068064          	DB	$C7,$06,xLD,'d',',','b',0
+0922: 2C6200            
+0925: FF0A808B          	DB	$FF,$0A,xLD,xACM,xBCI,0
+0929: 8600              
+092B: FF1A808B          	DB	$FF,$1A,xLD,xACM,xDEI,0
+092F: 8700              
+0931: FF3A808B          	DB	$FF,$3A,xLD,xACM,'(','w',')',0
+0935: 28772900          
+0939: FF028086          	DB	$FF,$02,xLD,xBCI,xCMA,0
+093D: 8C00              
+093F: FF128087          	DB	$FF,$12,xLD,xDEI,xCMA,0
+0943: 8C00              
+0945: CF018070          	DB	$CF,$01,xLD,'p',',','w',0
+0949: 2C7700            
+094C: FF328028          	DB	$FF,$32,xLD,'(','w',')',xCMA,0
+0950: 77298C00          
+0954: FF2A8083          	DB	$FF,$2A,xLD,xHL,',','(','w',')',0
+0958: 2C287729          
+095C: 00                
+095D: FF228028          	DB	$FF,$22,xLD,'(','w',')',',',xHL,0
+0961: 77292C83          
+0965: 00                
+0966: FFF9808D          	DB	$FF,$F9,xLD,xSP,',',xHL,0
+096A: 2C8300            
+096D: FFF58E20          	DB	$FF,$F5,xPUSH,' ',xAF,0
+0971: 9000              
+0973: CFC58E20          	DB	$CF,$C5,xPUSH,' ','p',0
+0977: 7000              
+0979: FFF18F90          	DB	$FF,$F1,xPOP,xAF,0
+097D: 00                
+097E: CFC18F70          	DB	$CF,$C1,xPOP,'p',0
+0982: 00                
+0983: FFEB9120          	DB	$FF,$EB,xEX,' ',xDE,',',xHL,0
+0987: 822C8300          
+098B: FF089120          	DB	$FF,$08,xEX,' ',xAF,',',xAF,$27,0
+098F: 902C9027          
+0993: 00                
+0994: FFD99158          	DB	$FF,$D9,xEX,'X',0
+0998: 00                
+0999: FFE39120          	DB	$FF,$E3,xEX,' ','(',xSP,')',',',xHL,0
+099D: 288D292C          
+09A1: 8300              
+09A3: F880948B          	DB	$F8,$80,xADD,xACM,'s',0
+09A7: 7300              
+09A9: FFC6948B          	DB	$FF,$C6,xADD,xACM,'b',0
+09AD: 6200              
+09AF: F888958B          	DB	$F8,$88,xADC,xACM,'s',0
+09B3: 7300              
+09B5: FFCE958B          	DB	$FF,$CE,xADC,xACM,'b',0
+09B9: 6200              
+09BB: F890968B          	DB	$F8,$90,xSUB,xACM,'s',0
+09BF: 7300              
+09C1: FFD6968B          	DB	$FF,$D6,xSUB,xACM,'b',0
+09C5: 6200              
+09C7: F898978B          	DB	$F8,$98,xSBC,xACM,'s',0
+09CB: 7300              
+09CD: FFDE978B          	DB	$FF,$DE,xSBC,xACM,'b',0
+09D1: 6200              
+09D3: F8A0988B          	DB	$F8,$A0,xAND,xACM,'s',0
+09D7: 7300              
+09D9: FFE6988B          	DB	$FF,$E6,xAND,xACM,'b',0
+09DD: 6200              
+09DF: F8A89A8B          	DB	$F8,$A8,xXOR,xACM,'s',0
+09E3: 7300              
+09E5: FFEE9A8B          	DB	$FF,$EE,xXOR,xACM,'b',0
+09E9: 6200              
+09EB: F8B0998B          	DB	$F8,$B0,xOR,xACM,'s',0
+09EF: 7300              
+09F1: FFF6998B          	DB	$FF,$F6,xOR,xACM,'b',0
+09F5: 6200              
+09F7: F8B89320          	DB	$F8,$B8,xCP,' ',xACM,'s',0
+09FB: 8B7300            
+09FE: FFFE9320          	DB	$FF,$FE,xCP,' ',xACM,'b',0
+0A02: 8B6200            
+0A05: C7049B64          	DB	$C7,$04,xINC,'d',0
+0A09: 00                
+0A0A: C7059C64          	DB	$C7,$05,xDEC,'d',0
+0A0E: 00                
+0A0F: CF099483          	DB	$CF,$09,xADD,xHL,',','p',0
+0A13: 2C7000            
+0A16: FF274441          	DB	$FF,$27,'D','A','A',0
+0A1A: 4100              
+0A1C: FF2F934C          	DB	$FF,$2F,xCP,'L',0
+0A20: 00                
+0A21: FF3F4343          	DB	$FF,$3F,'C','C','F',0
+0A25: 4600              
+0A27: FF375343          	DB	$FF,$37,'S','C','F',0
+0A2B: 4600              
+0A2D: FF004E4F          	DB	$FF,$00,'N','O','P',0
+0A31: 5000              
+0A33: FFF34449          	DB	$FF,$F3,'D','I',0
+0A37: 00                
+0A38: FFFB4549          	DB	$FF,$FB,'E','I',0
+0A3C: 00                
+0A3D: CF039B70          	DB	$CF,$03,xINC,'p',0
+0A41: 00                
+0A42: CF0B9C70          	DB	$CF,$0B,xDEC,'p',0
+0A46: 00                
+0A47: FF079D43          	DB	$FF,$07,xRL,'C','A',0
+0A4B: 4100              
+0A4D: FF179D41          	DB	$FF,$17,xRL,'A',0
+0A51: 00                
+0A52: FF0F9E43          	DB	$FF,$0F,xRR,'C','A',0
+0A56: 4100              
+0A58: FF1F9E41          	DB	$FF,$1F,xRR,'A',0
+0A5C: 00                
+0A5D: FFC39F77          	DB	$FF,$C3,xJP,'w',0
+0A61: 00                
+0A62: C7C29F63          	DB	$C7,$C2,xJP,'c',',','w',0
+0A66: 2C7700            
+0A69: FF18A072          	DB	$FF,$18,xJR,'r',0
+0A6D: 00                
+0A6E: FF38A043          	DB	$FF,$38,xJR,'C',',','r',0
+0A72: 2C7200            
+0A75: FF30A04E          	DB	$FF,$30,xJR,'N','C',',','r',0
+0A79: 432C7200          
+0A7D: FF28A05A          	DB	$FF,$28,xJR,'Z',',','r',0
+0A81: 2C7200            
+0A84: FF20A04E          	DB	$FF,$20,xJR,'N','Z',',','r',0
+0A88: 5A2C7200          
+0A8C: FFE99F88          	DB	$FF,$E9,xJP,xHLI,0
+0A90: 00                
+0A91: FF10444A          	DB	$FF,$10,'D','J','N','Z',' ','r',0
+0A95: 4E5A2072          
+0A99: 00                
+0A9A: FFCDA120          	DB	$FF,$CD,xCALL,' ','w',0
+0A9E: 7700              
+0AA0: C7C4A120          	DB	$C7,$C4,xCALL,' ','c',',','w',0
+0AA4: 632C7700          
+0AA8: FFC9A200          	DB	$FF,$C9,xRET,0
+0AAC: C7C0A220          	DB	$C7,$C0,xRET,' ','c',0
+0AB0: 6300              
+0AB2: C7C75253          	DB	$C7,$C7,'R','S','T',' ','n',0
+0AB6: 54206E00          
+0ABA: FFDBA320          	DB	$FF,$DB,xIN,' ',xACM,'(','b',')',0
+0ABE: 8B286229          
+0AC2: 00                
+0AC3: FFD3A420          	DB	$FF,$D3,xOUT,' ','(','b',')',xCMA,0
+0AC7: 2862298C          
+0ACB: 00                
+0ACC: 003F00            	DB	0,'?',0
+                        ; -- CB prefix opcode table
+0ACF: F8009D43          DTABCB	DB	$F8,$00,xRL,'C',' ','s',0
+0AD3: 207300            
+0AD6: F8109D20          	DB	$F8,$10,xRL,' ','s',0
+0ADA: 7300              
+0ADC: F8089E43          	DB	$F8,$08,xRR,'C',' ','s',0
+0AE0: 207300            
+0AE3: F8189E20          	DB	$F8,$18,xRR,' ','s',0
+0AE7: 7300              
+0AE9: F820534C          	DB	$F8,$20,'S','L','A',' ','s',0
+0AED: 41207300          
+0AF1: F8285352          	DB	$F8,$28,'S','R','A',' ','s',0
+0AF5: 41207300          
+0AF9: F8385352          	DB	$F8,$38,'S','R','L',' ','s',0
+0AFD: 4C207300          
+0B01: C040A56E          	DB	$C0,$40,xBIT,'n',',','s',0
+0B05: 2C7300            
+0B08: C0C0A66E          	DB	$C0,$C0,xSET,'n',',','s',0
+0B0C: 2C7300            
+0B0F: C080A76E          	DB	$C0,$80,xRES,'n',',','s',0
+0B13: 2C7300            
+0B16: 003F00            	DB	0,'?',0
+                        ; -- DD prefix opcode table
+0B19: C7468064          DTABDD	DB	$C7,$46,xLD,'d',',',xIXI,'b',')',0
+0B1D: 2C896229          
+0B21: 00                
+0B22: F8708089          	DB	$F8,$70,xLD,xIXI,'b',')',',','s',0
+0B26: 62292C73          
+0B2A: 00                
+0B2B: FF368089          	DB	$FF,$36,xLD,xIXI,'b',')',',','b',0
+0B2F: 62292C62          
+0B33: 00                
+0B34: FF218084          	DB	$FF,$21,xLD,xIX,',','w',0
+0B38: 2C7700            
+0B3B: FF2A8084          	DB	$FF,$2A,xLD,xIX,',','(','w',')',0
+0B3F: 2C287729          
+0B43: 00                
+0B44: FF228028          	DB	$FF,$22,xLD,'(','w',')',',',xIX,0
+0B48: 77292C84          
+0B4C: 00                
+0B4D: FFF9808D          	DB	$FF,$F9,xLD,xSP,',',xIX,0
+0B51: 2C8400            
+0B54: FFE58E20          	DB	$FF,$E5,xPUSH,' ',xIX,0
+0B58: 8400              
+0B5A: FFE18F84          	DB	$FF,$E1,xPOP,xIX,0
+0B5E: 00                
+0B5F: FFE39120          	DB	$FF,$E3,xEX,' ','(',xSP,')',',',xIX,0
+0B63: 288D292C          
+0B67: 8400              
+0B69: FF86948B          	DB	$FF,$86,xADD,xACM,xIXI,'b',')',0
+0B6D: 89622900          
+0B71: FF8E958B          	DB	$FF,$8E,xADC,xACM,xIXI,'b',')',0
+0B75: 89622900          
+0B79: FF96968B          	DB	$FF,$96,xSUB,xACM,xIXI,'b',')',0
+0B7D: 89622900          
+0B81: FF9E978B          	DB	$FF,$9E,xSBC,xACM,xIXI,'b',')',0
+0B85: 89622900          
+0B89: FFA6988B          	DB	$FF,$A6,xAND,xACM,xIXI,'b',')',0
+0B8D: 89622900          
+0B91: FFAE9A8B          	DB	$FF,$AE,xXOR,xACM,xIXI,'b',')',0
+0B95: 89622900          
+0B99: FFB6998B          	DB	$FF,$B6,xOR,xACM,xIXI,'b',')',0
+0B9D: 89622900          
+0BA1: FFBE9320          	DB	$FF,$BE,xCP,' ',xACM,xIXI,'b',')',0
+0BA5: 8B896229          
+0BA9: 00                
+0BAA: FF349B89          	DB	$FF,$34,xINC,xIXI,'b',')',0
+0BAE: 622900            
+0BB1: FF359C89          	DB	$FF,$35,xDEC,xIXI,'b',')',0
+0BB5: 622900            
+0BB8: CF099484          	DB	$CF,$09,xADD,xIX,',','x',0
+0BBC: 2C7800            
+0BBF: FF239B84          	DB	$FF,$23,xINC,xIX,0
+0BC3: 00                
+0BC4: FF2B9C84          	DB	$FF,$2B,xDEC,xIX,0
+0BC8: 00                
+0BC9: FFE99F89          	DB	$FF,$E9,xJP,xIXI,0
+0BCD: 00                
+0BCE: FFCB7AFF          	DB	$FF,$CB,'z',$FF,$06,xRL,'C',' ',xIXI,'v',')',0
+0BD2: 069D4320          
+0BD6: 89762900          
+0BDA: FFCB7AFF          	DB	$FF,$CB,'z',$FF,$16,xRR,'C',' ',xIXI,'v',')',0
+0BDE: 169E4320          
+0BE2: 89762900          
+0BE6: FFCB7AC7          	DB	$FF,$CB,'z',$C7,$46,xBIT,'n',',',xIXI,'v',')',0
+0BEA: 46A56E2C          
+0BEE: 89762900          
+0BF2: FFCB7AC7          	DB	$FF,$CB,'z',$C7,$C6,xSET,'n',',',xIXI,'v',')',0
+0BF6: C6A66E2C          
+0BFA: 89762900          
+0BFE: FFCB7AC7          	DB	$FF,$CB,'z',$C7,$86,xRES,'n',',',xIXI,'v',')',0
+0C02: 86A76E2C          
+0C06: 89762900          
+0C0A: 003F00            	DB	0,'?',0
+                        ; -- FD prefix opcode table
+0C0D: C7468064          DTABFD	DB	$C7,$46,xLD,'d',',',xIYI,'b',')',0
+0C11: 2C8A6229          
+0C15: 00                
+0C16: F870808A          	DB	$F8,$70,xLD,xIYI,'b',')',',','s',0
+0C1A: 62292C73          
+0C1E: 00                
+0C1F: FF36808A          	DB	$FF,$36,xLD,xIYI,'b',')',',','b',0
+0C23: 62292C62          
+0C27: 00                
+0C28: FF218085          	DB	$FF,$21,xLD,xIY,',','w',0
+0C2C: 2C7700            
+0C2F: FF2A8085          	DB	$FF,$2A,xLD,xIY,',','(','w',')',0
+0C33: 2C287729          
+0C37: 00                
+0C38: FF228028          	DB	$FF,$22,xLD,'(','w',')',',',xIY,0
+0C3C: 77292C85          
+0C40: 00                
+0C41: FFF9808D          	DB	$FF,$F9,xLD,xSP,',',xIY,0
+0C45: 2C8500            
+0C48: FFE58E20          	DB	$FF,$E5,xPUSH,' ',xIY,0
+0C4C: 8500              
+0C4E: FFE18F85          	DB	$FF,$E1,xPOP,xIY,0
+0C52: 00                
+0C53: FFE39120          	DB	$FF,$E3,xEX,' ','(',xSP,')',',',xIY,0
+0C57: 288D292C          
+0C5B: 8500              
+0C5D: FF86948B          	DB	$FF,$86,xADD,xACM,xIYI,'b',')',0
+0C61: 8A622900          
+0C65: FF8E958B          	DB	$FF,$8E,xADC,xACM,xIYI,'b',')',0
+0C69: 8A622900          
+0C6D: FF96968B          	DB	$FF,$96,xSUB,xACM,xIYI,'b',')',0
+0C71: 8A622900          
+0C75: FF9E978B          	DB	$FF,$9E,xSBC,xACM,xIYI,'b',')',0
+0C79: 8A622900          
+0C7D: FFA6988B          	DB	$FF,$A6,xAND,xACM,xIYI,'b',')',0
+0C81: 8A622900          
+0C85: FFAE9A8B          	DB	$FF,$AE,xXOR,xACM,xIYI,'b',')',0
+0C89: 8A622900          
+0C8D: FFB6998B          	DB	$FF,$B6,xOR,xACM,xIYI,'b',')',0
+0C91: 8A622900          
+0C95: FFBE9320          	DB	$FF,$BE,xCP,' ',xACM,xIYI,'b',')',0
+0C99: 8B8A6229          
+0C9D: 00                
+0C9E: FF349B8A          	DB	$FF,$34,xINC,xIYI,'b',')',0
+0CA2: 622900            
+0CA5: FF359C8A          	DB	$FF,$35,xDEC,xIYI,'b',')',0
+0CA9: 622900            
+0CAC: CF099485          	DB	$CF,$09,xADD,xIY,',','y',0
+0CB0: 2C7900            
+0CB3: FF239B85          	DB	$FF,$23,xINC,xIY,0
+0CB7: 00                
+0CB8: FF2B9C85          	DB	$FF,$2B,xDEC,xIY,0
+0CBC: 00                
+0CBD: FFE99F8A          	DB	$FF,$E9,xJP,xIYI,0
+0CC1: 00                
+0CC2: FFCB7AFF          	DB	$FF,$CB,'z',$FF,$06,xRL,'C',' ',xIYI,'v',')',0
+0CC6: 069D4320          
+0CCA: 8A762900          
+0CCE: FFCB7AFF          	DB	$FF,$CB,'z',$FF,$16,xRR,'C',' ',xIYI,'v',')',0
+0CD2: 169E4320          
+0CD6: 8A762900          
+0CDA: FFCB7AC7          	DB	$FF,$CB,'z',$C7,$46,xBIT,'n',',',xIYI,'v',')',0
+0CDE: 46A56E2C          
+0CE2: 8A762900          
+0CE6: FFCB7AC7          	DB	$FF,$CB,'z',$C7,$C6,xSET,'n',',',xIYI,'v',')',0
+0CEA: C6A66E2C          
+0CEE: 8A762900          
+0CF2: FFCB7AC7          	DB	$FF,$CB,'z',$C7,$86,xRES,'n',',',xIYI,'v',')',0
+0CF6: 86A76E2C          
+0CFA: 8A762900          
+0CFE: 003F00            	DB	0,'?',0
+                        ; -- ED prefix opcode table
+0D01: FF57808B          DTABED	DB	$FF,$57,xLD,xACM,'I',0
+0D05: 4900              
+0D07: FF5F808B          	DB	$FF,$5F,xLD,xACM,'R',0
+0D0B: 5200              
+0D0D: FF478049          	DB	$FF,$47,xLD,'I',xCMA,0
+0D11: 8C00              
+0D13: FF4F8052          	DB	$FF,$4F,xLD,'R',xCMA,0
+0D17: 8C00              
+0D19: CF4B8070          	DB	$CF,$4B,xLD,'p','(','w',')',0
+0D1D: 28772900          
+0D21: FFA09249          	DB	$FF,$A0,xLDx,'I',0
+0D25: 00                
+0D26: FFB09249          	DB	$FF,$B0,xLDx,'I','R',0
+0D2A: 5200              
+0D2C: FFA89244          	DB	$FF,$A8,xLDx,'D',0
+0D30: 00                
+0D31: FFB89244          	DB	$FF,$B8,xLDx,'D','R',0
+0D35: 5200              
+0D37: FFA19349          	DB	$FF,$A1,xCP,'I',0
+0D3B: 00                
+0D3C: FFB19349          	DB	$FF,$B1,xCP,'I','R',0
+0D40: 5200              
+0D42: FFA99344          	DB	$FF,$A9,xCP,'D',0
+0D46: 00                
+0D47: FFB99344          	DB	$FF,$B9,xCP,'D','R',0
+0D4B: 5200              
+0D4D: FF444E45          	DB	$FF,$44,'N','E','G',0
+0D51: 4700              
+0D53: FF46494D          	DB	$FF,$46,'I','M',' ','0',0
+0D57: 203000            
+0D5A: FF56494D          	DB	$FF,$56,'I','M',' ','1',0
+0D5E: 203100            
+0D61: FF5E494D          	DB	$FF,$5E,'I','M',' ','2',0
+0D65: 203200            
+0D68: CF4A9583          	DB	$CF,$4A,xADC,xHL,',','p',0
+0D6C: 2C7000            
+0D6F: CF429783          	DB	$CF,$42,xSBC,xHL,',','p',0
+0D73: 2C7000            
+0D76: FF6F9D44          	DB	$FF,$6F,xRL,'D',0
+0D7A: 00                
+0D7B: FF679E44          	DB	$FF,$67,xRR,'D',0
+0D7F: 00                
+0D80: FF4DA249          	DB	$FF,$4D,xRET,'I',0
+0D84: 00                
+0D85: FF45A24E          	DB	$FF,$45,xRET,'N',0
+0D89: 00                
+0D8A: C740A320          	DB	$C7,$40,xIN,' ','d',',','(','C',')',0
+0D8E: 642C2843          
+0D92: 2900              
+0D94: FFA2A349          	DB	$FF,$A2,xIN,'I',0
+0D98: 00                
+0D99: FFB2A349          	DB	$FF,$B2,xIN,'I','R',0
+0D9D: 5200              
+0D9F: FFAAA344          	DB	$FF,$AA,xIN,'D',0
+0DA3: 00                
+0DA4: FFBAA344          	DB	$FF,$BA,xIN,'D','R',0
+0DA8: 5200              
+0DAA: C741A420          	DB	$C7,$41,xOUT,' ','(','C',')',',','d',0
+0DAE: 2843292C          
+0DB2: 6400              
+0DB4: FFA3A449          	DB	$FF,$A3,xOUT,'I',0
+0DB8: 00                
+0DB9: FFB34F54          	DB	$FF,$B3,'O','T','I','R',0
+0DBD: 495200            
+0DC0: FFABA444          	DB	$FF,$AB,xOUT,'D',0
+0DC4: 00                
+0DC5: FFBB4F54          	DB	$FF,$BB,'O','T','D','R',0
+0DC9: 445200            
+0DCC: 003F00            	DB	0,'?',0
+                        ;
+                        ; Table of execution flow affecting opcodes and handlers
+                        ;
+0DCF: FFC38D07          EFTAB	DW	$C3FF,EXJP	;JP
+0DD3: C7C28807          	DW	$C2C7,EXJPC	;JP C
+0DD7: FF189B07          	DW	$18FF,EXJR	;JR
+0DDB: FFE97507          	DW	$E9FF,EXJPHL	;JP (HL)
+0DDF: FFCDB107          	DW	$CDFF,EXCALL	;CALL
+0DE3: C7C4AC07          	DW	$C4C7,EXCALLC	;CALL C
+0DE7: FFC9CF07          	DW	$C9FF,EXRET	;RET
+0DEB: C7C0CA07          	DW	$C0C7,EXRETC	;RET C
+0DEF: FF109207          	DW	$10FF,EXDJNZ	;DJNZ
+0DF3: FF387A07          	DW	$38FF,EXJRC	;JR C
+0DF7: FF307E07          	DW	$30FF,EXJRNC	;JR NC
+0DFB: FF288207          	DW	$28FF,EXJRZ	;JR Z
+0DFF: FF208607          	DW	$20FF,EXJRNZ	;JR NZ
+0E03: C7C76B07          	DW	$C7C7,EXRST	;RST
+0E07: FFDD5307          	DW	$DDFF,EXDDP	;DD prefix: JP (IX)
+0E0B: FFFE5F07          	DW	$FEFF,EXFDP	;FD prefix: JP (IY)
+0E0F:                   EFEND	EQU	$
+                        ;
+                        ; Help text
+                        ;
+0E0F: 4D4F4E5A          HTEXT	defm'MONZ80 Commands:'
+0E13: 38302043          
+0E17: 6F6D6D61          
+0E1B: 6E64733A          
+0E1F: 0A00              	DB	$0A,0
+0E21: 42522030          	defm	'BR 0-7 addr|Set breakpoint (0000 clears)',0
+0E25: 2D372061          
+0E29: 6464727C          
+0E2D: 53657420          
+0E31: 62726561          
+0E35: 6B706F69          
+0E39: 6E742028          
+0E3D: 30303030          
+0E41: 20636C65          
+0E45: 61727329          
+0E49: 00                
+0E4A: 44427C44          	defm	'DB|Display breakpoints',0
+0E4E: 6973706C          
+0E52: 61792062          
+0E56: 7265616B          
+0E5A: 706F696E          
+0E5E: 747300            
+0E61: 44492066          	defm	'DI from,[to]|Disassemble memory',0
+0E65: 726F6D2C          
+0E69: 5B746F5D          
+0E6D: 7C446973          
+0E71: 61737365          
+0E75: 6D626C65          
+0E79: 206D656D          
+0E7D: 6F727900          
+0E81: 444D2066          	defm	'DM from,[to]|Dump memory (HEX/ASCII)',0
+0E85: 726F6D2C          
+0E89: 5B746F5D          
+0E8D: 7C44756D          
+0E91: 70206D65          
+0E95: 6D6F7279          
+0E99: 20284845          
+0E9D: 582F4153          
+0EA1: 43494929          
+0EA5: 00                
+0EA6: 44527C44          	defm	'DR|Display Z80 registers',0
+0EAA: 6973706C          
+0EAE: 6179205A          
+0EB2: 38302072          
+0EB6: 65676973          
+0EBA: 74657273          
+0EBE: 00                
+0EBF: 45206164          	defm	'E addr|Edit memory',0
+0EC3: 64727C45          
+0EC7: 64697420          
+0ECB: 6D656D6F          
+0ECF: 727900            
+0ED2: 46206672          	defm	'F from,to value|Fill memory',0
+0ED6: 6F6D2C74          
+0EDA: 6F207661          
+0EDE: 6C75657C          
+0EE2: 46696C6C          
+0EE6: 206D656D          
+0EEA: 6F727900          
+0EEE: 47205B61          	defm	'G [addr]|Go (execute)',0
+0EF2: 6464725D          
+0EF6: 7C476F20          
+0EFA: 28657865          
+0EFE: 63757465          
+0F02: 2900              
+0F04: 4920706F          	defm	'I port|Read/Display I/O port',0
+0F08: 72747C52          
+0F0C: 6561642F          
+0F10: 44697370          
+0F14: 6C617920          
+0F18: 492F4F20          
+0F1C: 706F7274          
+0F20: 00                
+0F21: 4C7C4C6F          	defm	'L|Load .HEX file',0
+0F25: 6164202E          
+0F29: 48455820          
+0F2D: 66696C65          
+0F31: 00                
+0F32: 4F20706F          	defm	'O port value|Write I/O port',0
+0F36: 72742076          
+0F3A: 616C7565          
+0F3E: 7C577269          
+0F42: 74652049          
+0F46: 2F4F2070          
+0F4A: 6F727400          
+0F4E: 547C5472          	defm	'T|Trace (single-step)',0
+0F52: 61636520          
+0F56: 2873696E          
+0F5A: 676C652D          
+0F5E: 73746570          
+0F62: 2900              
+0F64: 41462C42          	defm	'AF,BC,DE,HL',0
+0F68: 432C4445          
+0F6C: 2C484C00          
+0F70: 49582C49          	defm	'IX,IY,SP,PC value|Set register value',0
+0F74: 592C5350          
+0F78: 2C504320          
+0F7C: 76616C75          
+0F80: 657C5365          
+0F84: 74207265          
+0F88: 67697374          
+0F8C: 65722076          
+0F90: 616C7565          
+0F94: 00                
+0F95: 00                	DB	0
+                        
+0F96:                   #code _u68B50
+                        ;
+                        ;------------ LOW LEVEL I/O FUNCTIONS -----------
+                        ; Modified for 68B50 UART at I/O port 80h (status/control) and 81h (data)
+                        ;
+                        ; Initialize I/O subsystem
+                        ; 
+0F96: 3E03     [ 7]     IOINIT	LD	A,3			; Insure not setup mode (some second source requires this)
+0F98: D380     [18]         	OUT	(80h),A		; Write once
+0F9A: D380     [29]         	OUT (80h),A		; write twice 
+0F9C: 3E77     [36]         	LD  A,%01110111	; Setup mode
+0F9E: D380     [47]         	OUT (80h),A		; write it
+                        		;; actually, set the UART to its operational mode for the VZ200 Clone
+0FA0: 3E15     [54]         	LD	A,$15		; 8 data, 1 stop, no parity, /16 clock, RTS high, ints off
+0FA2: D380     [65]         	OUT	(80h),A		; Write it
+0FA4: C9       [75]         	RET
+                        ;
+                        ; Test for character from the console return 0 in a if no character available
+                        ;
+0FA5: DB80     [11]     TESTC	IN	A,(80h)		;Get status
+0FA7: E601     [18]     		AND	1			;RX ready  
+0FA9: C8       [23|29]      	RET	Z			;No, return zero
+0FAA: DB81     [34]         	IN	A,(81h)		;Read data
+0FAC: C9       [44]         	RET
+                        ;
+                        ; Write character to console by waiting for TX ready
+                        ;
+0FAD: F5       [11]     PUTC	PUSH AF			;Save PSW
+0FAE: DB80     [11]     putc1	IN	 A,(80h)	;Read status
+0FB0: E602     [18]         	AND  2			;TX ready
+0FB2: 28FA     [25|30]      	JR	 Z,putc1	;Not ready
+0FB4: F1       [35]         	POP	 AF			;Restore
+0FB5: D381     [46]             OUT	 (81h),A	;Write to data port
+0FB7: C9       [56]         RET
+                        
+                        #end
+
+
+; +++ segments +++
+
+#DATA UCODE    = $7860 = 30816,  size = $0000 =     0
+#DATA MDATA    = $7800 = 30720,  size = $0060 =    96
+#CODE MCODE    = $0000 =     0,  size = $0F96 =  3990
+#CODE _u68B50  = $0F96 =  3990,  size = $0022 =    34
+
+; +++ global symbols +++
+
+BDUMP        = $0366 =   870  MCODE   monz80.asm:553
+BEGIN        = $0074 =   116  MCODE   monz80.asm:133
+BRKP1        = $0040 =    64  MCODE   monz80.asm:99 (unused)
+BRKPT        = $0038 =    56  MCODE   monz80.asm:95 (unused)
+BRKTAB       = $7811 = 30737  MDATA   monz80.asm:65
+BUFFER       = $782D = 30765  MDATA   monz80.asm:69
+CAF          = $02CD =   717  MCODE   monz80.asm:467
+CBC          = $02D2 =   722  MCODE   monz80.asm:469
+CCTAB        = $0850 =  2128  MCODE   monz80.asm:1349
+CDE          = $02D7 =   727  MCODE   monz80.asm:471
+CHL          = $02DC =   732  MCODE   monz80.asm:473
+CHLDE        = $0255 =   597  MCODE   monz80.asm:400
+CHREG        = $02F3 =   755  MCODE   monz80.asm:483
+CIX          = $02E1 =   737  MCODE   monz80.asm:475
+CIY          = $02E6 =   742  MCODE   monz80.asm:477
+CLRSER       = $0136 =   310  MCODE   monz80.asm:211
+CMDRET       = $012F =   303  MCODE   monz80.asm:207
+CPC          = $02EB =   747  MCODE   monz80.asm:479
+CSP          = $02F0 =   752  MCODE   monz80.asm:481
+CTABLE       = $0146 =   326  MCODE   monz80.asm:245
+DISASM       = $0519 =  1305  MCODE   monz80.asm:850
+DISCMD       = $020D =   525  MCODE   monz80.asm:361
+DLEOF        = $042F =  1071  MCODE   monz80.asm:680
+DLERR        = $0431 =  1073  MCODE   monz80.asm:683
+DLINT        = $0406 =  1030  MCODE   monz80.asm:652
+DLINT1       = $041F =  1055  MCODE   monz80.asm:668
+DLMOT        = $03D3 =   979  MCODE   monz80.asm:620 (unused)
+DLREC        = $03C8 =   968  MCODE   monz80.asm:614
+DMOT1        = $03F5 =  1013  MCODE   monz80.asm:639
+DTAB         = $0910 =  2320  MCODE   monz80.asm:1454
+DTABCB       = $0ACF =  2767  MCODE   monz80.asm:1525
+DTABDD       = $0B19 =  2841  MCODE   monz80.asm:1537
+DTABED       = $0D01 =  3329  MCODE   monz80.asm:1599
+DTABFD       = $0C0D =  3085  MCODE   monz80.asm:1568
+DUMP         = $021E =   542  MCODE   monz80.asm:371
+EDIT         = $030A =   778  MCODE   monz80.asm:502
+EFEND        = $0E0F =  3599  MCODE   monz80.asm:1652
+EFSIZE       = $0010 =    16          monz80.asm:36
+EFTAB        = $0DCF =  3535  MCODE   monz80.asm:1636
+ENTMON       = $00E7 =   231  MCODE   monz80.asm:158
+ERROR        = $0129 =   297  MCODE   monz80.asm:205
+EXCALL       = $07B1 =  1969  MCODE   monz80.asm:1274
+EXCALLC      = $07AC =  1964  MCODE   monz80.asm:1269
+EXDDP        = $0753 =  1875  MCODE   monz80.asm:1200
+EXDJNZ       = $0792 =  1938  MCODE   monz80.asm:1250
+EXFDP        = $075F =  1887  MCODE   monz80.asm:1208
+EXJP         = $078D =  1933  MCODE   monz80.asm:1245
+EXJPC        = $0788 =  1928  MCODE   monz80.asm:1240
+EXJPHL       = $0775 =  1909  MCODE   monz80.asm:1225
+EXJR         = $079B =  1947  MCODE   monz80.asm:1257
+EXJRC        = $077A =  1914  MCODE   monz80.asm:1230
+EXJRNC       = $077E =  1918  MCODE   monz80.asm:1232
+EXJRNZ       = $0786 =  1926  MCODE   monz80.asm:1236
+EXJRZ        = $0782 =  1922  MCODE   monz80.asm:1234
+EXRET        = $07CF =  1999  MCODE   monz80.asm:1296
+EXRETC       = $07CA =  1994  MCODE   monz80.asm:1291
+EXRST        = $076B =  1899  MCODE   monz80.asm:1216
+EXSKP        = $07C9 =  1993  MCODE   monz80.asm:1287
+FILL         = $0354 =   852  MCODE   monz80.asm:541
+GETADR       = $0480 =  1152  MCODE   monz80.asm:745
+GETADRD      = $049D =  1181  MCODE   monz80.asm:765
+GETC         = $0462 =  1122  MCODE   monz80.asm:724
+GETHEX       = $0434 =  1076  MCODE   monz80.asm:688
+GETHEXC      = $0447 =  1095  MCODE   monz80.asm:702
+GETNIB       = $044D =  1101  MCODE   monz80.asm:708
+GETRANG      = $0489 =  1161  MCODE   monz80.asm:753
+GO           = $01C5 =   453  MCODE   monz80.asm:318
+GOHL         = $07C6 =  1990  MCODE   monz80.asm:1286
+GOHLS        = $07B4 =  1972  MCODE   monz80.asm:1276 (unused)
+GOSTEP       = $06CD =  1741  MCODE   monz80.asm:1122
+GOSTEP1      = $06D5 =  1749  MCODE   monz80.asm:1126
+HELP         = $019B =   411  MCODE   monz80.asm:294
+HTEXT        = $0E0F =  3599  MCODE   monz80.asm:1656
+INPORT       = $0269 =   617  MCODE   monz80.asm:416
+IOCTL        = $7810 = 30736  MDATA   monz80.asm:64
+IOINIT       = $0F96 =  3990  _u68B50 monz80.asm:1681
+IXBYTE       = $06AE =  1710  MCODE   monz80.asm:1099
+IXNIB        = $06BB =  1723  MCODE   monz80.asm:1106
+LFCR         = $04D0 =  1232  MCODE   monz80.asm:804
+LOAD         = $03BA =   954  MCODE   monz80.asm:605
+MCODE        = $0000 =     0  MCODE   monz80.asm:75 (unused)
+MCODE_end    = $0F96 =  3990  MCODE   monz80.asm:75 (unused)
+MCODE_size   = $0F96 =  3990  MCODE   monz80.asm:75 (unused)
+MDATA        = $7800 = 30720  MDATA   monz80.asm:45
+MDATA_end    = $7860 = 30816  MDATA   monz80.asm:45 (unused)
+MDATA_size   = $0060 =    96  MDATA   monz80.asm:45 (unused)
+MONSTK       = $785F = 30815  MDATA   monz80.asm:70
+OUTPORT      = $0275 =   629  MCODE   monz80.asm:424
+PUTC         = $0FAD =  4013  _u68B50 monz80.asm:1701
+RDUMP        = $028F =   655  MCODE   monz80.asm:441
+REGTAB       = $0800 =  2048  MCODE   monz80.asm:1327
+RNTEXT       = $02AC =   684  MCODE   monz80.asm:458
+RPTAB        = $0820 =  2080  MCODE   monz80.asm:1336
+RPTABX       = $0830 =  2096  MCODE   monz80.asm:1340
+RPTABY       = $0840 =  2112  MCODE   monz80.asm:1344
+SETBRK       = $039A =   922  MCODE   monz80.asm:583
+SPACE        = $0506 =  1286  MCODE   monz80.asm:829
+STEP         = $0282 =   642  MCODE   monz80.asm:433
+STEPRET      = $072E =  1838  MCODE   monz80.asm:1180
+TABTAB       = $0870 =  2160  MCODE   monz80.asm:1358
+TEMP         = $7829 = 30761  MDATA   monz80.asm:66
+TEMP1        = $782B = 30763  MDATA   monz80.asm:67
+TEMP2        = $782C = 30764  MDATA   monz80.asm:68
+TESTC        = $0FA5 =  4005  _u68B50 monz80.asm:1693
+TESTCC       = $07E0 =  2016  MCODE   monz80.asm:1308
+UCODE        = $7860 = 30816  UCODE   monz80.asm:42
+UCODE_end    = $7860 = 30816  UCODE   monz80.asm:42 (unused)
+UCODE_size   = $0000 =     0  UCODE   monz80.asm:42 (unused)
+USTACK       = $FFFF = 65535  USTACK  monz80.asm:39
+USTACK_end   = $FFFF = 65535  USTACK  monz80.asm:39 (unused)
+USTACK_size  = $0000 =     0  USTACK  monz80.asm:39 (unused)
+WRADDR       = $04AE =  1198  MCODE   monz80.asm:776
+WRBYTE       = $04B3 =  1203  MCODE   monz80.asm:782
+WRMSG        = $050B =  1291  MCODE   monz80.asm:834
+WRNIB        = $04C0 =  1216  MCODE   monz80.asm:792
+WRPRINT      = $025B =   603  MCODE   monz80.asm:407
+WRSTR        = $0510 =  1296  MCODE   monz80.asm:840
+_u68B50      = $0F96 =  3990  _u68B50 monz80.asm:1674 (unused)
+_u68B50_end  = $0FB8 =  4024  _u68B50 monz80.asm:1674 (unused)
+_u68B50_size = $0022 =    34  _u68B50 monz80.asm:1674 (unused)
+bdump1       = $036B =   875  MCODE   monz80.asm:555
+bdump2       = $0390 =   912  MCODE   monz80.asm:574
+bdump3       = $0393 =   915  MCODE   monz80.asm:575
+begin1       = $0080 =   128  MCODE   monz80.asm:138
+clrse1       = $0139 =   313  MCODE   monz80.asm:212
+cmd          = $00F9 =   249  MCODE   monz80.asm:166
+cmd1         = $0101 =   257  MCODE   monz80.asm:171
+cmd2         = $0117 =   279  MCODE   monz80.asm:189
+cmd3         = $011C =   284  MCODE   monz80.asm:194
+dis1         = $052A =  1322  MCODE   monz80.asm:860
+dis2         = $0538 =  1336  MCODE   monz80.asm:867
+dis3         = $0548 =  1352  MCODE   monz80.asm:874
+dis4         = $0553 =  1363  MCODE   monz80.asm:880
+dis5         = $055C =  1372  MCODE   monz80.asm:884
+dis7         = $056E =  1390  MCODE   monz80.asm:893
+dis8         = $0579 =  1401  MCODE   monz80.asm:899
+disa1        = $059E =  1438  MCODE   monz80.asm:922
+disa10       = $0612 =  1554  MCODE   monz80.asm:1002
+disa100      = $06A1 =  1697  MCODE   monz80.asm:1090
+disa11       = $0623 =  1571  MCODE   monz80.asm:1013
+disa12       = $062C =  1580  MCODE   monz80.asm:1018
+disa13       = $0635 =  1589  MCODE   monz80.asm:1023
+disa14       = $0646 =  1606  MCODE   monz80.asm:1033
+disa14a      = $0653 =  1619  MCODE   monz80.asm:1041
+disa15       = $0661 =  1633  MCODE   monz80.asm:1050
+disa15a      = $067E =  1662  MCODE   monz80.asm:1069
+disa16       = $0682 =  1666  MCODE   monz80.asm:1072
+disa17       = $068B =  1675  MCODE   monz80.asm:1077
+disa18       = $0699 =  1689  MCODE   monz80.asm:1086
+disa2        = $05A6 =  1446  MCODE   monz80.asm:929
+disa3        = $05AD =  1453  MCODE   monz80.asm:936
+disa4        = $05B7 =  1463  MCODE   monz80.asm:945
+disa5        = $05BB =  1467  MCODE   monz80.asm:947
+disa6        = $05CB =  1483  MCODE   monz80.asm:956
+disa61       = $05D0 =  1488  MCODE   monz80.asm:958
+disa62       = $05D9 =  1497  MCODE   monz80.asm:965
+disa63       = $05E6 =  1510  MCODE   monz80.asm:973
+disa7        = $05E9 =  1513  MCODE   monz80.asm:976
+disa8        = $05F5 =  1525  MCODE   monz80.asm:984
+disa81       = $05FC =  1532  MCODE   monz80.asm:987
+disa9        = $0607 =  1543  MCODE   monz80.asm:995
+disa900      = $06A9 =  1705  MCODE   monz80.asm:1094
+disa91       = $060D =  1549  MCODE   monz80.asm:999
+disass       = $057C =  1404  MCODE   monz80.asm:906
+disc1        = $0210 =   528  MCODE   monz80.asm:362
+dump1        = $0221 =   545  MCODE   monz80.asm:372
+dump2        = $022D =   557  MCODE   monz80.asm:377
+dump3        = $0245 =   581  MCODE   monz80.asm:390
+edit1        = $030D =   781  MCODE   monz80.asm:503
+edit2        = $0313 =   787  MCODE   monz80.asm:505
+edit3        = $0325 =   805  MCODE   monz80.asm:513
+edit4        = $032D =   813  MCODE   monz80.asm:518
+edit5        = $0336 =   822  MCODE   monz80.asm:522
+edit6        = $033A =   826  MCODE   monz80.asm:524
+edit7        = $0346 =   838  MCODE   monz80.asm:530
+exjr1        = $07A6 =  1958  MCODE   monz80.asm:1263
+fill1        = $035E =   862  MCODE   monz80.asm:545
+geta1        = $0483 =  1155  MCODE   monz80.asm:746
+getc1        = $0467 =  1127  MCODE   monz80.asm:727
+getc2        = $0474 =  1140  MCODE   monz80.asm:735
+getc3        = $047E =  1150  MCODE   monz80.asm:740
+geth1        = $043A =  1082  MCODE   monz80.asm:690
+help1        = $019E =   414  MCODE   monz80.asm:295
+help2        = $01A3 =   419  MCODE   monz80.asm:297
+help3        = $01B2 =   434  MCODE   monz80.asm:306
+help4        = $01C1 =   449  MCODE   monz80.asm:312
+imbrk1       = $01DB =   475  MCODE   monz80.asm:328
+imbrk2       = $01E8 =   488  MCODE   monz80.asm:339
+ixnib1       = $06C4 =  1732  MCODE   monz80.asm:1111
+lfcr1        = $04E6 =  1254  MCODE   monz80.asm:813
+lfcr2        = $04F5 =  1269  MCODE   monz80.asm:819
+lfcr4        = $04FC =  1276  MCODE   monz80.asm:822
+load1        = $03BF =   959  MCODE   monz80.asm:607
+putc1        = $0FAE =  4014  _u68B50 monz80.asm:1702
+rdump1       = $0295 =   661  MCODE   monz80.asm:443
+rembrk1      = $0062 =    98  MCODE   monz80.asm:117
+rembrk2      = $006C =   108  MCODE   monz80.asm:126
+setb1        = $03AF =   943  MCODE   monz80.asm:595
+step1        = $06F7 =  1783  MCODE   monz80.asm:1146
+step2        = $0702 =  1794  MCODE   monz80.asm:1156
+step3        = $0729 =  1833  MCODE   monz80.asm:1174
+uAF          = $7800 = 30720  MDATA   monz80.asm:48
+uBC          = $7802 = 30722  MDATA   monz80.asm:49
+uDE          = $7804 = 30724  MDATA   monz80.asm:50
+uHL          = $7806 = 30726  MDATA   monz80.asm:51
+uIX          = $7808 = 30728  MDATA   monz80.asm:52
+uIY          = $780A = 30730  MDATA   monz80.asm:53
+uPC          = $780C = 30732  MDATA   monz80.asm:54
+uSP          = $780E = 30734  MDATA   monz80.asm:55
+wrnib1       = $04C9 =  1225  MCODE   monz80.asm:797
+wrpri1       = $0264 =   612  MCODE   monz80.asm:411
+xACM         = $008B =   139  MCODE   monz80.asm:1381
+xADC         = $0095 =   149  MCODE   monz80.asm:1401
+xADD         = $0094 =   148  MCODE   monz80.asm:1399
+xAF          = $0090 =   144  MCODE   monz80.asm:1391
+xAND         = $0098 =   152  MCODE   monz80.asm:1407
+xBC          = $0081 =   129  MCODE   monz80.asm:1361 (unused)
+xBCI         = $0086 =   134  MCODE   monz80.asm:1371
+xBIT         = $00A5 =   165  MCODE   monz80.asm:1433
+xCALL        = $00A1 =   161  MCODE   monz80.asm:1425
+xCMA         = $008C =   140  MCODE   monz80.asm:1383
+xCP          = $0093 =   147  MCODE   monz80.asm:1397
+xDE          = $0082 =   130  MCODE   monz80.asm:1363
+xDEC         = $009C =   156  MCODE   monz80.asm:1415
+xDEI         = $0087 =   135  MCODE   monz80.asm:1373
+xEX          = $0091 =   145  MCODE   monz80.asm:1393
+xHL          = $0083 =   131  MCODE   monz80.asm:1365
+xHLI         = $0088 =   136  MCODE   monz80.asm:1375
+xIN          = $00A3 =   163  MCODE   monz80.asm:1429
+xINC         = $009B =   155  MCODE   monz80.asm:1413
+xIX          = $0084 =   132  MCODE   monz80.asm:1367
+xIXI         = $0089 =   137  MCODE   monz80.asm:1377
+xIY          = $0085 =   133  MCODE   monz80.asm:1369
+xIYI         = $008A =   138  MCODE   monz80.asm:1379
+xJP          = $009F =   159  MCODE   monz80.asm:1421
+xJR          = $00A0 =   160  MCODE   monz80.asm:1423
+xLD          = $0080 =   128  MCODE   monz80.asm:1359
+xLDx         = $0092 =   146  MCODE   monz80.asm:1395
+xOR          = $0099 =   153  MCODE   monz80.asm:1409
+xOUT         = $00A4 =   164  MCODE   monz80.asm:1431
+xPOP         = $008F =   143  MCODE   monz80.asm:1389
+xPUSH        = $008E =   142  MCODE   monz80.asm:1387
+xRES         = $00A7 =   167  MCODE   monz80.asm:1437
+xRET         = $00A2 =   162  MCODE   monz80.asm:1427
+xRL          = $009D =   157  MCODE   monz80.asm:1417
+xRR          = $009E =   158  MCODE   monz80.asm:1419
+xSBC         = $0097 =   151  MCODE   monz80.asm:1405
+xSET         = $00A6 =   166  MCODE   monz80.asm:1435
+xSP          = $008D =   141  MCODE   monz80.asm:1385
+xSUB         = $0096 =   150  MCODE   monz80.asm:1403
+xXOR         = $009A =   154  MCODE   monz80.asm:1411
+
+
+total time: 0.0332 sec.
+no errors

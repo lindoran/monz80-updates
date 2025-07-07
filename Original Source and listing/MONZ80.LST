@@ -1,0 +1,1672 @@
+DUNFIELD Z80 ASSEMBLER:                                               PAGE: 1
+
+0000                         1  *
+0000                         2  * MONZ80: A software debugger for the Z80 processor
+0000                         3  *
+0000                         4  * ?COPY.TXT 1996-2007 Dave Dunfield
+0000                         5  *  -- see COPY.TXT --.
+0000                         6  *
+0000                         7  * Monitor data
+0000                         8  * (modified for vz200 clone, Z8D)
+0000                         9  MCODE	EQU	$0000		;Monitor CODE goes here (ROM)
+7800                        10  MDATA	EQU	$7800		;Monitor DATA goes here (start of RAM)
+7860                        11  UCODE	EQU	$7860		;User CODE address (same space as before)
+FFFF                        12  USTACK	EQU	$FFFF		;User STACK address (top of RAM)
+0000                        13  *
+7800                        14  	ORG	MDATA
+7800                        15  * User registers (saved while monitor active)
+7800                        16  uAF	DS	2		;User AF register
+7802                        17  uBC	DS	2		;User BC register
+7804                        18  uDE	DS	2		;User DE register
+7806                        19  uHL	DS	2		;User HL register
+7808                        20  uIX	DS	2		;User IX register
+780A                        21  uIY	DS	2		;User IY register
+780C                        22  uPC	DS	2		;User PC register
+780E                        23  uSP	DS	2		;User SP register
+7810                        24  * I/O control byte:
+7810                        25  *  7/80 = Output paused
+7810                        26  *  6/40 = Echo input
+7810                        27  *  5/20 = Convert to upper case
+7810                        28  *  4/10 = Clear input stream first
+7810                        29  IOCTL	DS	1		;I/O control byte
+7811                        30  BRKTAB	DS	8*3		;Breakpoint table
+7829                        31  TEMP	DS	2		;Temporary storage
+782B                        32  TEMP1	DS	1		;Temporary storage
+782C                        33  TEMP2	DS	1		;Temporary storage
+782D                        34  BUFFER	DS	50		;Disassembler output buffer
+785F                        35  MONSTK	EQU	*		;Some free space
+785F                        36  *
+785F                        37  * Monitor Code
+785F                        38  *
+0000                        39  	ORG	MCODE
+0000                        40  *
+0000  C3 74 00              41  	JP	BEGIN		;Start up monitor
+0008                        42  	ORG	1*8		;RST 1
+0008  C3 68 78              43  	JP	UCODE+(1*8)	;Execute user code
+0010                        44  	ORG	2*8		;RST 2
+0010  C3 70 78              45  	JP	UCODE+(2*8)	;Execute user code
+0018                        46  	ORG	3*8		;RST 3
+0018  C3 78 78              47  	JP	UCODE+(3*8)	;Execute user code
+0020                        48  	ORG	4*8		;RST 4
+0020  C3 80 78              49  	JP	UCODE+(4*8)	;Execute user code
+0028                        50  	ORG	5*8		;RST 5
+0028  C3 88 78              51  	JP	UCODE+(5*8)	;Execute user code
+0030                        52  	ORG	6*8		;RST 6
+0030  C3 90 78              53  	JP	UCODE+(6*8)	;Execute user code
+0038                        54  	ORG	7*8		;RST 7 - Breakpoint
+0038                        55  *
+0038                        56  * Breakpoint encountered - save registers, replace breakpoints
+0038                        57  *
+DUNFIELD Z80 ASSEMBLER:                                               PAGE: 2
+
+0038  22 06 78              58  BRKPT	LD	(uHL),HL	;Save HL
+003B  E1                    59  	POP	HL		;Get PC
+003C  2B                    60  	DEC	HL		;Backup to RST instruction
+003D  22 0C 78              61  	LD	(uPC),HL	;Save PC
+0040  F5                    62  BRKP1	PUSH	AF		;Get AF
+0041  E1                    63  	POP	HL		;Copy
+0042  22 00 78              64  	LD	(uAF),HL	;Save AF
+0045  21 00 00              65  	LD	HL,0		;Get 0
+0048  39                    66  	ADD	HL,SP		;Get SP
+0049  22 0E 78              67  	LD	(uSP),HL	;Save SP
+004C  EB                    68  	EX	DE,HL		;Get DE
+004D  22 04 78              69  	LD	(uDE),HL	;Save DE
+0050  60                    70  	LD	H,B		;Get B
+0051  69                    71  	LD	L,C		;Get C
+0052  22 02 78              72  	LD	(uBC),HL	;Save BC
+0055  DD 22 08 78           73  	LD	(uIX),IX	;Save IX
+0059  FD 22 0A 78           74  	LD	(uIY),IY	;Save IY
+005D                        75  * Remove any active breakpoints
+005D  21 11 78              76  	LD	HL,BRKTAB	;Point to breakpoint table
+0060  06 08                 77  	LD	B,8		;Total of 8 breakpoints
+0062  5E                    78  rembrk1	LD	E,(HL)		;Get LOW address
+0063  23                    79  	INC	HL		;Skip to next
+0064  56                    80  	LD	D,(HL)		;Get HIGH address
+0065  23                    81  	INC	HL		;Skip to next
+0066  7A                    82  	LD	A,D		;Get HIGH
+0067  B5                    83  	OR	L		;Test with LOW
+0068  28 02                 84  	JR	Z,rembrk2	;No breakpoint here
+006A  7E                    85  	LD	A,(HL)		;Get opcode
+006B  12                    86  	LD	(DE),A		;Resave opcode value
+006C  23                    87  rembrk2	INC	HL		;Skip to next
+006D  10 F3                 88  	DJNZ	rembrk1		;Remove them all
+006F  CD 8F 02              89  	CALL	RDUMP		;Display registers
+0072  18 73                 90  	JR	ENTMON		;Enter monitor
+0074                        91  * Cold start entry point
+0074  31 5F 78              92  BEGIN	LD	SP,MONSTK	;Set initial stack
+0077  CD 96 0F              93  	CALL	IOINIT		;Initialize I/O
+007A                        94  * Initialize monitor memory to zero
+007A  21 00 78              95  	LD	HL,MDATA	;Point to start of monitor RAM
+007D  11 29 78              96  	LD	DE,TEMP		;End of initialized area
+0080  36 00                 97  begin1	LD	(HL),0		;Zero 1 byte
+0082  CD 55 02              98  	CALL	CHLDE		;Perform compare
+0085  23                    99  	INC	HL		;Advance
+0086  38 F8                100  	JR	C,begin1	;Zero it all
+0088                       101  * Output welcome message
+0088  CD 0B 05             102  	CALL	WRMSG		;Output message
+008B  0A 0D                103  	DB	$0A,$0D
+008D  4D 4F 4E 5A 38 30 +  104  	STR	'MONZ80 Version 1.0'
+009F  0A 0D 0A             105  	DB	$0A,$0D,$0A
+00A2  3F 43 4F 50 59 2E +  106  	STR	'?COPY.TXT 1996-2007 Dave Dunfield'
+00C3  0A 0D                107  	DB	$0A,$0D
+00C5  20 2D 2D 20 73 65 +  108  	STR	' -- see COPY.TXT --.'
+00D9  0A 00                109  	DB	$0A,0
+00DB                       110  * Set initial PC and SP
+00DB  21 60 78             111  	LD	HL,UCODE	;Get default PC
+00DE  22 0C 78             112  	LD	(uPC),HL	;Set it
+00E1  21 FF FF             113  	LD	HL,USTACK	;Get default SP
+00E4  22 0E 78             114  	LD	(uSP),HL	;Set it
+DUNFIELD Z80 ASSEMBLER:                                               PAGE: 3
+
+00E7                       115  * Warm-start of monitor
+00E7  31 5F 78             116  ENTMON	LD	SP,MONSTK	;Reset SP
+00EA  3E 60                117  	LD	A,%01100000	;Echo, Ucase
+00EC  32 10 78             118  	LD	(IOCTL),A	;Set I/O control
+00EF  CD 0B 05             119  	CALL	WRMSG		;Output string
+00F2  0A 0D 3E 00          120  	DB	$0A,$0D,'>',0	;Prompt string
+00F6                       121  * Get command from console
+00F6  0E 00                122  	LD	C,0		;Clear first char
+00F8  51                   123  	LD	D,C		;Clear pending flag
+00F9  41                   124  cmd	LD	B,C		;Set first character
+00FA  CD 62 04             125  	CALL	GETC		;Get command character
+00FD  4F                   126  	LD	C,A		;Set second character
+00FE                       127  * Search for command in command table
+00FE  21 46 01             128  	LD	HL,CTABLE	;Point to command table
+0101  79                   129  cmd1	LD	A,C		;Get LAST char
+0102  BE                   130  	CP	(HL)		;Match?
+0103  23                   131  	INC	HL		;Skip to next
+0104  20 11                132  	JR	NZ,cmd2		;No, try next
+0106  78                   133  	LD	A,B		;Get HIGH char
+0107  BE                   134  	CP	(HL)		;Match?
+0108  20 0D                135  	JR	NZ,cmd2		;No, try next
+010A                       136  * We found the command - execute handler
+010A  23                   137  	INC	HL		;Skip second
+010B  CD 06 05             138  	CALL	SPACE		;Separator
+010E  7E                   139  	LD	A,(HL)		;Get LOW address
+010F  23                   140  	INC	HL		;Advance
+0110  66                   141  	LD	H,(HL)		;Get HIGH address
+0111  6F                   142  	LD	L,A		;Set LOW address
+0112  01 2F 01             143  	LD	BC,CMDRET	;Get return address
+0115  C5                   144  	PUSH	BC		;Save for return
+0116  E9                   145  	JP	(HL)		;Execute
+0117                       146  * This command didn't match, check for part of two char sequence
+0117  79                   147  cmd2	LD	A,C		;Get char
+0118  BE                   148  	CP	(HL)		;Does it match leading of 2char?
+0119  20 01                149  	JR	NZ,cmd3		;No, skip it
+011B  14                   150  	INC	D		;Record possibility
+011C                       151  * Advance to next table entry
+011C  23                   152  cmd3	INC	HL		;Skip second
+011D  23                   153  	INC	HL		;Skip address LOW
+011E  23                   154  	INC	HL		;Skip address HIGH
+011F  7E                   155  	LD	A,(HL)		;Get character
+0120  A7                   156  	AND	A		;End of table
+0121  20 DE                157  	JR	NZ,cmd1		;Check every entry
+0123  B0                   158  	OR	B		;First time through?
+0124  20 03                159  	JR	NZ,ERROR	;No, report error
+0126  B2                   160  	OR	D		;Possible 2 char?
+0127  20 D0                161  	JR	NZ,CMD		;Try again
+0129                       162  * An error has occured
+0129  CD 0B 05             163  ERROR	CALL	WRMSG		;Output message
+012C  20 3F 00             164  	STRZ	' ?'		;Error message
+012F  3A 10 78             165  CMDRET	LD	A,(IOCTL)	;Get I/O control
+0132  E6 10                166  	AND	%00010000	;Clean input?
+0134  28 B1                167  	JR	Z,entmon	;No, leave it
+0136                       168  * Wait for serial data to clear
+0136  01 00 00             169  CLRSER	LD	BC,0		;Reset counter
+0139  CD A5 0F             170  clrse1	CALL	TESTC		;Wait for input
+013C  A7                   171  	AND	A		;Character ready?
+DUNFIELD Z80 ASSEMBLER:                                               PAGE: 4
+
+013D  20 F7                172  	JR	NZ,CLRSER	;Yes, reset
+013F  0B                   173  	DEC	BC		;Reduce count
+0140  78                   174  	LD	A,B		;Get high
+0141  B1                   175  	OR	C		;Test for zero
+0142  20 F5                176  	JR	NZ,clrse1	;Wait for expiry
+0144  18 A1                177  	JR	ENTMON		;Re-enter monitor
+0146                       178  * Command handler table
+0146  4D 44 1E 02          179  CTABLE	DW	'DM',DUMP	;Dump memory
+014A  49 44 0D 02          180  	DW	'DI',DISCMD	;Disassemble memory
+014E  52 44 8F 02          181  	DW	'DR',RDUMP	;Dump registers
+0152  42 44 66 03          182  	DW	'DB',BDUMP	;Dump breakpoints
+0156  52 42 9A 03          183  	DW	'BR',SETBRK	;Set breakpoint
+015A  45 00 0A 03          184  	DW	'E',EDIT	;Edit memory
+015E  46 00 54 03          185  	DW	'F',FILL	;Fill memory
+0162  49 00 69 02          186  	DW	'I',INPORT	;Input from a port
+0166  4F 00 75 02          187  	DW	'O',OUTPORT	;Output to a port
+016A  47 00 C5 01          188  	DW	'G',GO		;Go (execute)
+016E  54 00 82 02          189  	DW	'T',STEP	;Single-step
+0172  4C 00 BA 03          190  	DW	'L',LOAD	;Load HEX file
+0176                       191  * Register modification commands
+0176  46 41 CD 02          192  	DW	'AF',CAF	;Change AF
+017A  43 42 D2 02          193  	DW	'BC',CBC	;Change BC
+017E  45 44 D7 02          194  	DW	'DE',CDE	;Change DE
+0182  4C 48 DC 02          195  	DW	'HL',CHL	;Change HL
+0186  58 49 E1 02          196  	DW	'IX',CIX	;Change IX
+018A  59 49 E6 02          197  	DW	'IY',CIY	;Change IY
+018E  43 50 EB 02          198  	DW	'PC',CPC	;Change PC
+0192  50 53 F0 02          199  	DW	'SP',CSP	;Change SP
+0196  3F 00 9B 01          200  	DW	'?',HELP	;Help output
+019A  00                   201  	DB	0
+019B                       202  *
+019B                       203  * Help command
+019B                       204  *
+019B  21 0F 0E             205  HELP	LD	HL,HTEXT	;Point to help text
+019E  CD D0 04             206  help1	CALL	LFCR		;New line
+01A1  06 19                207  	LD	B,25		;Margin for comments
+01A3  7E                   208  help2	LD	A,(HL)		;Get data from table
+01A4  23                   209  	INC	HL		;Skip to next
+01A5  A7                   210  	AND	A		;End of line?
+01A6  28 19                211  	JR	Z,help4		;Yes, stop
+01A8  FE 7C                212  	CP	'|'		;Special case?
+01AA  28 06                213  	JR	Z,help3		;Yes, handle it
+01AC  CD AD 0F             214  	CALL	PUTC		;Output character
+01AF  05                   215  	DEC	B		;Reduce count
+01B0  18 F1                216  	JR	help2		;Keep going
+01B2  CD 06 05             217  help3	CALL	SPACE		;Space over
+01B5  10 FB                218  	DJNZ	help3		;Do them all
+01B7  3E 2D                219  	LD	A,'-'		;Separator
+01B9  CD AD 0F             220  	CALL	PUTC		;output
+01BC  CD 06 05             221  	CALL	SPACE		;Space over
+01BF  18 E2                222  	JR	HELP2		;Keep outputing
+01C1  B6                   223  help4	OR	(HL)		;More data?
+01C2  20 DA                224  	JR	NZ,help1	;Keep going
+01C4  C9                   225  	RET
+01C5                       226  *
+01C5                       227  * Go (execute)
+01C5                       228  *
+DUNFIELD Z80 ASSEMBLER:                                               PAGE: 5
+
+01C5  2A 0C 78             229  GO	LD	HL,(uPC)	;Get user PC
+01C8  44                   230  	LD	B,H		;Copy HIGH
+01C9  4D                   231  	LD	C,L		;Copy LOW
+01CA  CD 9D 04             232  	CALL	GETADRD		;Get address with default
+01CD  22 0C 78             233  	LD	(uPC),HL	;Save new user PC
+01D0  CD D0 04             234  	CALL	LFCR		;New line
+01D3  CD CD 06             235  	CALL	GOSTEP		;Step one instruction
+01D6                       236  * Implant breakpoints
+01D6  21 11 78             237  	LD	HL,BRKTAB	;Point to breakpoint table
+01D9  06 08                238  	LD	B,8		;Max number of breakpoints
+01DB  5E                   239  imbrk1	LD	E,(HL)		;Get LOW address
+01DC  23                   240  	INC	HL		;Advance
+01DD  56                   241  	LD	D,(HL)		;Get HIGH address
+01DE  23                   242  	INC	HL		;Advance
+01DF  7A                   243  	LD	A,D		;Get HIGH
+01E0  B5                   244  	OR	L		;Test for breakpoint set
+01E1  28 05                245  	JR	Z,imbrk2	;Not set
+01E3  1A                   246  	LD	A,(DE)		;Get opcode
+01E4  77                   247  	LD	(HL),A		;Save in table
+01E5  3E FF                248  	LD	A,$FF		;Get breakpoint opcode (RST 7)
+01E7  12                   249  	LD	(DE),A		;Write to table
+01E8  23                   250  imbrk2	INC	HL		;Advance to next
+01E9  10 F0                251  	DJNZ	imbrk1		;Do them all
+01EB                       252  * Restore user registers and execute
+01EB  DD 2A 08 78          253  	LD	IX,(uIX)	;Get IX
+01EF  FD 2A 0A 78          254  	LD	IY,(uIY)	;Get IY
+01F3  2A 02 78             255  	LD	HL,(uBC)	;Get BC
+01F6  44                   256  	LD	B,H		;Copy
+01F7  4D                   257  	LD	C,L		;Copy
+01F8  2A 04 78             258  	LD	HL,(uDE)	;Get DE
+01FB  EB                   259  	EX	DE,HL		;Copy
+01FC  2A 00 78             260  	LD	HL,(uAF)	;Get AF
+01FF  E5                   261  	PUSH	HL		;Save
+0200  F1                   262  	POP	AF		;Copy
+0201  2A 0E 78             263  	LD	HL,(uSP)	;Get user SP
+0204  F9                   264  	LD	SP,HL		;Copy
+0205  2A 0C 78             265  	LD	HL,(uPC)	;Get user PC
+0208  E5                   266  	PUSH	HL		;Stack for return
+0209  2A 06 78             267  	LD	HL,(uHL)	;Get user HL
+020C  C9                   268  	RET			;Jump to user program
+020D                       269  *
+020D                       270  * Dump memory in instruction format (disassembly)
+020D                       271  *
+020D  CD 89 04             272  DISCMD	CALL	GETRANG		;Get address
+0210  CD D0 04             273  disc1	CALL	LFCR		;New line
+0213  CD 19 05             274  	CALL	DISASM		;Perform disassembly
+0216  CD 55 02             275  	CALL	CHLDE		;Are we at end?
+0219  38 F5                276  	JR	C,disc1		;No, keep going
+021B  28 F3                277  	JR	Z,disc1		;Do last address
+021D  C9                   278  	RET
+021E                       279  *
+021E                       280  * Dump memory in HEX format
+021E                       281  *
+021E  CD 89 04             282  DUMP	CALL	GETRANG		;Get address range
+0221  CD D0 04             283  dump1	CALL	LFCR		;New line
+0224  CD AE 04             284  	CALL	WRADDR		;Output address
+0227  CD 06 05             285  	CALL	SPACE		;Space over
+DUNFIELD Z80 ASSEMBLER:                                               PAGE: 6
+
+022A  06 10                286  	LD	B,16		;Display 16 bytes
+022C  E5                   287  	PUSH	HL		;Save HL
+022D  CD 06 05             288  dump2	CALL	SPACE		;Space over
+0230  7E                   289  	LD	A,(HL)		;Get data
+0231  CD B3 04             290  	CALL	WRBYTE		;Display it
+0234  23                   291  	INC	HL		;Advance
+0235  78                   292  	LD	A,B		;Get copy
+0236  3D                   293  	DEC	A		;Adjust
+0237  E6 03                294  	AND	%00000011	;At 4 byte interval?
+0239  CC 06 05             295  	CALL	Z,SPACE		;Add extra space
+023C  05                   296  	DEC	B		;Backup count
+023D  20 EE                297  	JR	NZ,dump2	;Keep going
+023F  E1                   298  	POP	HL		;Restore register set
+0240  CD 06 05             299  	CALL	SPACE		;Space over
+0243  06 10                300  	LD	B,16		;Display 16 bytes
+0245  7E                   301  dump3	LD	A,(HL)		;Get data
+0246  CD 5B 02             302  	CALL	WRPRINT		;Display if printable
+0249  23                   303  	INC	HL		;Advance
+024A  05                   304  	DEC	B		;Decrement count
+024B  20 F8                305  	JR	NZ,dump3	;Do them all
+024D  CD 55 02             306  	CALL	CHLDE		;Compre HL and DE
+0250  38 CF                307  	JR	C,dump1		;Keep going
+0252  28 CD                308  	JR	Z,dump1		;Do last address
+0254  C9                   309  	RET
+0255                       310  * Compare HL and DE
+0255  7C                   311  CHLDE	LD	A,H		;Get HIGH HL
+0256  BA                   312  	CP	D		;Do compare
+0257  C0                   313  	RET	NZ		;Not same
+0258  7D                   314  	LD	A,L		;Get LOW HL
+0259  BB                   315  	CP	E		;Do compare
+025A  C9                   316  	RET
+025B                       317  * Display character if printable
+025B  FE 20                318  WRPRINT	CP	' '		;In range
+025D  38 05                319  	JR	C,wrpri1	;Too low
+025F  FE 7F                320  	CP	$7F		;In range?
+0261  DA AD 0F             321  	JP	C,PUTC		;Ok, write it
+0264  3E 2E                322  wrpri1	LD	A,'.'		;Translate to dot
+0266  C3 AD 0F             323  	JP	PUTC		;Write character
+0269                       324  *
+0269                       325  * Input from a port
+0269                       326  *
+0269  CD 34 04             327  INPORT	CALL	GETHEX		;Get port number
+026C  4F                   328  	LD	C,A		;Copy to port select
+026D  CD 06 05             329  	CALL	SPACE		;Space over
+0270  ED 78                330  	IN	A,(C)		;Read port
+0272  C3 B3 04             331  	JP	WRBYTE		;Output
+0275                       332  *
+0275                       333  * Output to a port
+0275                       334  *
+0275  CD 34 04             335  OUTPORT	CALL	GETHEX		;Get port number
+0278  4F                   336  	LD	C,A		;Copy to port select
+0279  CD 06 05             337  	CALL	SPACE		;Space over
+027C  CD 34 04             338  	CALL	GETHEX		;Get data
+027F  ED 79                339  	OUT	(C),A		;Write to port
+0281  C9                   340  	RET
+0282                       341  *
+0282                       342  * Single Step one instruction
+DUNFIELD Z80 ASSEMBLER:                                               PAGE: 7
+
+0282                       343  *
+0282  2A 0C 78             344  STEP	LD	HL,(uPC)	;Get user PC
+0285  4D                   345  	LD	C,L		;Set C to copy of lower
+0286  CD 19 05             346  	CALL	DISASM		;Display on console
+0289  CD D0 04             347  	CALL	LFCR		;New line
+028C  CD D5 06             348  	CALL	GOSTEP1		;Perform step
+028F                       349  *
+028F                       350  * Dump registers
+028F                       351  *
+028F  21 AC 02             352  RDUMP	LD	HL,RNTEXT	;Point to register text
+0292  11 00 78             353  	LD	DE,uAF		;Point to first register
+0295  CD 06 05             354  rdump1	CALL	SPACE		;Space over
+0298  CD 10 05             355  	CALL	WRSTR		;Write string
+029B  1A                   356  	LD	A,(DE)		;Get LOW value
+029C  4F                   357  	LD	C,A		;Save for later
+029D  13                   358  	INC	DE		;Advance
+029E  1A                   359  	LD	A,(DE)		;Get HIGH value
+029F  13                   360  	INC	DE		;Advance
+02A0  CD B3 04             361  	CALL	WRBYTE		;Write HIGH
+02A3  79                   362  	LD	A,C		;Get LOW
+02A4  CD B3 04             363  	CALL	WRBYTE		;Write LOW
+02A7  7E                   364  	LD	A,(HL)		;Get flag byte
+02A8  A7                   365  	AND	A		;At end?
+02A9  20 EA                366  	JR	NZ,rdump1	;Continue
+02AB  C9                   367  	RET
+02AC                       368  * Text of register names (in order of register storage)
+02AC  41 46 3D 00          369  RNTEXT	STRZ	'AF='
+02B0  42 43 3D 00          370  	STRZ	'BC='
+02B4  44 45 3D 00          371  	STRZ	'DE='
+02B8  48 4C 3D 00          372  	STRZ	'HL='
+02BC  49 58 3D 00          373  	STRZ	'IX='
+02C0  49 59 3D 00          374  	STRZ	'IY='
+02C4  50 43 3D 00          375  	STRZ	'PC='
+02C8  53 50 3D 00          376  	STRZ	'SP='
+02CC  00                   377  	DB	0		;End of list
+02CD  21 00 78             378  CAF	LD	HL,uAF		;Point to register
+02D0  18 21                379  	JR	CHREG		;Change it
+02D2  21 02 78             380  CBC	LD	HL,uBC		;Point to register
+02D5  18 1C                381  	JR	CHREG		;Change it
+02D7  21 04 78             382  CDE	LD	HL,uDE		;Point to register
+02DA  18 17                383  	JR	CHREG		;Change it
+02DC  21 06 78             384  CHL	LD	HL,uHL		;Point to register
+02DF  18 12                385  	JR	CHREG		;Change it
+02E1  21 08 78             386  CIX	LD	HL,uIX		;Point to register
+02E4  18 0D                387  	JR	CHREG		;Change it
+02E6  21 0A 78             388  CIY	LD	HL,uIY		;Point to register
+02E9  18 08                389  	JR	CHREG		;Change it
+02EB  21 0C 78             390  CPC	LD	HL,uPC		;Point to register
+02EE  18 03                391  	JR	CHREG		;Change it
+02F0  21 0E 78             392  CSP	LD	HL,uSP		;Point to register
+02F3                       393  *Change register pointed to by DE
+02F3  54                   394  CHREG	LD	D,H		;Copy HIGH
+02F4  5D                   395  	LD	E,L		;Copy LOW
+02F5  7E                   396  	LD	A,(HL)		;Get LOW
+02F6  23                   397  	INC	HL		;Advance
+02F7  66                   398  	LD	H,(HL)		;Get HIGH
+02F8  6F                   399  	LD	L,A		;Copy LOW
+DUNFIELD Z80 ASSEMBLER:                                               PAGE: 8
+
+02F9  CD AE 04             400  	CALL	WRADDR		;Output contents
+02FC  3E 2D                401  	LD	A,'-'		;Separator
+02FE  CD AD 0F             402  	CALL	PUTC		;Write it
+0301  CD 80 04             403  	CALL	GETADR		;Get address
+0304  7D                   404  	LD	A,L		;Get LOW
+0305  12                   405  	LD	(DE),A		;Write it
+0306  13                   406  	INC	DE		;Advance
+0307  7C                   407  	LD	A,H		;Get HIGH
+0308  12                   408  	LD	(DE),A		;Write it
+0309  C9                   409  	RET
+030A                       410  *
+030A                       411  * Edit memory
+030A                       412  *
+030A  CD 80 04             413  EDIT	CALL	GETADR		;Get address (with default)
+030D  CD D0 04             414  edit1	CALL	LFCR		;New line
+0310  CD AE 04             415  	CALL	WRADDR		;Output address
+0313  CD 06 05             416  edit2	CALL	SPACE		;Separator
+0316  7E                   417  	LD	A,(HL)		;Get address
+0317  CD B3 04             418  	CALL	WRBYTE		;Output
+031A  3E 2D                419  	LD	A,'-'		;Get prompt
+031C  CD AD 0F             420  	CALL	PUTC		;Output
+031F  CD 47 04             421  	CALL	GETHEXC		;Get HEX input
+0322  38 09                422  	JR	C,edit4		;Special case
+0324  77                   423  	LD	(HL),A		;Write value
+0325  23                   424  edit3	INC	HL		;Advance to next
+0326  7D                   425  	LD	A,L		;Get address
+0327  E6 07                426  	AND	%00000111	;8 byte boundary?
+0329  28 E2                427  	JR	Z,edit1		;New line
+032B  18 E6                428  	JR	edit2		;Its OK
+032D  FE 20                429  edit4	CP	' '		;Skip value
+032F  20 05                430  	JR	NZ,edit5	;No try next
+0331  CD 06 05             431  	CALL	SPACE		;Align display
+0334  18 EF                432  	JR	edit3		;And proceed
+0336  FE 27                433  edit5	CP	$27		;Single quote?
+0338  20 0C                434  	JR	NZ,edit7	;No, try next
+033A  CD A5 0F             435  edit6	CALL	TESTC		;Test for char
+033D  A7                   436  	AND	A		;Character ready?
+033E  28 FA                437  	JR	Z,edit6		;No, wait
+0340  77                   438  	LD	(HL),A		;Save it
+0341  CD 5B 02             439  	CALL	WRPRINT		;Echo it
+0344  18 DF                440  	JR	edit3		;And advance
+0346  FE 1B                441  edit7	CP	$1B		;Exit?
+0348  C8                   442  	RET	Z		;Return
+0349  FE 0D                443  	CP	$0D		;Return?
+034B  C8                   444  	RET	Z		;Return
+034C  FE 08                445  	CP	$08		;Backspace
+034E  C2 29 01             446  	JP	NZ,ERROR	;Report error
+0351  2B                   447  	DEC	HL		;Backup
+0352  18 B9                448  	JR	edit1		;re-prompt
+0354                       449  *
+0354                       450  * Fill memory
+0354                       451  *
+0354  CD 89 04             452  FILL	CALL	GETRANG		;Get range to fill
+0357  CD 06 05             453  	CALL	SPACE		;Space over
+035A  CD 34 04             454  	CALL	GETHEX		;Get value
+035D  4F                   455  	LD	C,A		;Save for later
+035E  71                   456  fill1	LD	(HL),C		;Save value
+DUNFIELD Z80 ASSEMBLER:                                               PAGE: 9
+
+035F  CD 55 02             457  	CALL	CHLDE		;Compare registers
+0362  23                   458  	INC	HL		;Advance
+0363  38 F9                459  	JR	C,fill1		;And continue
+0365  C9                   460  	RET
+0366                       461  *
+0366                       462  * Display breakpoints
+0366                       463  *
+0366  11 11 78             464  BDUMP	LD	DE,BRKTAB	;Point to breakpoint table
+0369  0E 00                465  	LD	C,0		;Max number of breakpoints
+036B  CD 0B 05             466  bdump1	CALL	WRMSG		;Output message
+036E  20 42 00             467  	STRZ	' B'		;Message
+0371  79                   468  	LD	A,C		;Get number
+0372  C6 30                469  	ADD	A,'0'		;Convert to ASCII
+0374  CD AD 0F             470  	CALL	PUTC		;Output
+0377  3E 3D                471  	LD	A,'='		;Separator
+0379  CD AD 0F             472  	CALL	PUTC		;Write it
+037C  1A                   473  	LD	A,(DE)		;Get LOW
+037D  6F                   474  	LD	L,A		;Save it
+037E  13                   475  	INC	DE		;Advance
+037F  1A                   476  	LD	A,(DE)		;Get HIGH
+0380  67                   477  	LD	H,A		;Save it
+0381  13                   478  	INC	DE		;Skip
+0382  13                   479  	INC	DE		;Skip opcode
+0383  B5                   480  	OR	L		;Set?
+0384  20 0A                481  	JR	NZ,bdump2	;Yes, output value
+0386  CD 0B 05             482  	CALL	WRMSG		;Output message
+0389  2D 2D 2D 2D 00       483  	STRZ	'----'		;Message
+038E  18 03                484  	JR	bdump3
+0390  CD AE 04             485  bdump2	CALL	WRADDR		;Output address
+0393  0C                   486  bdump3	INC	C		;Get address
+0394  79                   487  	LD	A,C		;Get value
+0395  FE 08                488  	CP	8		;In range
+0397  38 D2                489  	JR	C,bdump1	; Do them all
+0399  C9                   490  	RET
+039A                       491  *
+039A                       492  * Set a breakpoint
+039A                       493  *
+039A  CD 62 04             494  SETBRK	CALL	GETC		;Get nibble
+039D  D6 30                495  	SUB	'0'		;Convert from ASCII
+039F  FE 08                496  	CP	8		;In range?
+03A1  D2 29 01             497  	JP	NC,ERROR	;No, abort
+03A4  5F                   498  	LD	E,A		;Copy
+03A5  87                   499  	ADD	A,A		;x2
+03A6  83                   500  	ADD	A,E		;x3
+03A7  16 78                501  	LD	D,=BRKTAB	;Get HIGH offset
+03A9  C6 11                502  	ADD	A,BRKTAB	;Offset to brktab
+03AB  5F                   503  	LD	E,A		;Set LOW value
+03AC  30 01                504  	JR	NC,setb1	;No carry
+03AE  14                   505  	INC	D		;Advance HIGH
+03AF  CD 06 05             506  setb1	CALL	SPACE		;Space over
+03B2  CD 80 04             507  	CALL	GETADR		;Get address
+03B5  EB                   508  	EX	DE,HL		;Swap
+03B6  73                   509  	LD	(HL),E		;Set LOW
+03B7  23                   510  	INC	HL		;Advance
+03B8  72                   511  	LD	(HL),D		;Set HIGH
+03B9  C9                   512  	RET
+03BA                       513  *
+DUNFIELD Z80 ASSEMBLER:                                               PAGE: 10
+
+03BA                       514  * Download from serial port
+03BA                       515  *
+03BA  3E 30                516  LOAD	LD	A,%00110000	;Upper case, clear stream
+03BC  32 10 78             517  	LD	(IOCTL),A	;Set I/O control
+03BF  CD C8 03             518  load1	CALL	DLREC		;Load one record
+03C2  C2 29 01             519  	JP	NZ,ERROR	;Report errors
+03C5  30 F8                520  	JR	NC,load1	;Not end of file
+03C7  C9                   521  	RET
+03C8                       522  *
+03C8                       523  * Download a record from the serial port
+03C8                       524  *
+03C8  CD 62 04             525  DLREC	CALL	GETC		;Read a character
+03CB  FE 3A                526  	CP	':'		;Start of record?
+03CD  28 37                527  	JR	Z,DLINT		;Download INTEL format
+03CF  FE 53                528  	CP	'S'		;Is it MOTOROLA?
+03D1  20 F5                529  	JR	NZ,DLREC	;No, keep looking
+03D3                       530  * Download a MOTOROLA HEX format record
+03D3  CD 62 04             531  DLMOT	CALL	GETC		;Get next character
+03D6  FE 30                532  	CP	'0'		;Header record?
+03D8  28 EE                533  	JR	Z,DLREC		;Yes, skip it
+03DA  FE 39                534  	CP	'9'		;End of file?
+03DC  28 51                535  	JR	Z,DLEOF		;Yes, report EOF
+03DE  FE 31                536  	CP	'1'		;Type 1 (code) record
+03E0  20 4F                537  	JR	NZ,DLERR	;Report error
+03E2  CD 34 04             538  	CALL	GETHEX		;Get hex byte
+03E5  4F                   539  	LD	C,A		;Start checksum
+03E6  D6 03                540  	SUB	3		;Convert for overhead
+03E8  5F                   541  	LD	E,A		;Save data length
+03E9  CD 34 04             542  	CALL	GETHEX		;Get first byte of address
+03EC  67                   543  	LD	H,A		;Set HIGH address
+03ED  81                   544  	ADD	A,C		;Include in checksum
+03EE  4F                   545  	LD	C,A		;And re-save
+03EF  CD 34 04             546  	CALL	GETHEX		;Get next byte of address
+03F2  6F                   547  	LD	L,A		;Set LOW address
+03F3  81                   548  	ADD	A,C		;Include in checksum
+03F4  4F                   549  	LD	C,A		;And re-save
+03F5  CD 34 04             550  DMOT1	CALL	GETHEX		;Get a byte of data
+03F8  77                   551  	LD	(HL),A		;Save in memory
+03F9  23                   552  	INC	HL		;Advance
+03FA  81                   553  	ADD	A,C		;Include in checksum
+03FB  4F                   554  	LD	C,A		;And re-save
+03FC  1D                   555  	DEC	E		;Reduce length
+03FD  20 F6                556  	JR	NZ,DMOT1	;Keep going
+03FF  CD 34 04             557  	CALL	GETHEX		;Get record checksum
+0402  81                   558  	ADD	A,C		;Include calculated checksum
+0403  3C                   559  	INC	A		;Adjust for test
+0404  A7                   560  	AND	A		;Clear carry set Z if no error
+0405  C9                   561  	RET
+0406                       562  * Download a record in INTEL hex format
+0406  CD 34 04             563  DLINT	CALL	GETHEX		;Get length
+0409  A7                   564  	AND	A		;End of file?
+040A  28 23                565  	JR	Z,DLEOF		;Yes, handle it
+040C  4F                   566  	LD	C,A		;Begin Checksum
+040D  5F                   567  	LD	E,A		;Record length
+040E  CD 34 04             568  	CALL	GETHEX		;Get HIGH address
+0411  67                   569  	LD	H,A		;Set HIGH address
+0412  81                   570  	ADD	A,C		;Include in checksum
+DUNFIELD Z80 ASSEMBLER:                                               PAGE: 11
+
+0413  4F                   571  	LD	C,A		;Re-save
+0414  CD 34 04             572  	CALL	GETHEX		;Get LOW address
+0417  6F                   573  	LD	L,A		;Set LOW address
+0418  81                   574  	ADD	A,C		;Include in checksum
+0419  4F                   575  	LD	C,A		;Re-save
+041A  CD 34 04             576  	CALL	GETHEX		;Get type byte
+041D  81                   577  	ADD	A,C		;Include in checksum
+041E  4F                   578  	LD	C,A		;Re-save
+041F  CD 34 04             579  DLINT1	CALL	GETHEX		;Get data byte
+0422  77                   580  	LD	(HL),A		;Save in memory
+0423  23                   581  	INC	HL		;Advance to next
+0424  81                   582  	ADD	A,C		;Include in checksum
+0425  4F                   583  	LD	C,A		;Resave checksum
+0426  1D                   584  	DEC	E		;Reduce count
+0427  20 F6                585  	JR	NZ,DLINT1	;Do entire record
+0429  CD 34 04             586  	CALL	GETHEX		;Get record checksum
+042C  81                   587  	ADD	A,C		;Add to computed checksum
+042D  A7                   588  	AND	A		;Clear carry, set Z if no error
+042E  C9                   589  	RET
+042F                       590  * End of file on download
+042F  37                   591  DLEOF	SCF			;Set carry, EOF
+0430  C9                   592  	RET
+0431                       593  * Invalid record type
+0431  F6 FF                594  DLERR	OR	$FF		;Clear C and Z
+0433  C9                   595  	RET
+0434                       596  *
+0434                       597  * Get byte into A
+0434                       598  *
+0434  CD 4D 04             599  GETHEX	CALL	GETNIB		;Get nibble
+0437  DA 29 01             600  	JP	C,ERROR		;Report error
+043A  07                   601  geth1	RLCA			;Shift
+043B  07                   602  	RLCA			;Over into
+043C  07                   603  	RLCA			;High nibble
+043D  07                   604  	RLCA			;Position
+043E  47                   605  	LD	B,A		;Save for later
+043F  CD 4D 04             606  	CALL	GETNIB		;Get nibble
+0442  DA 29 01             607  	JP	C,ERROR		;Report error
+0445  B0                   608  	OR	B		;Add in high
+0446  C9                   609  	RET
+0447                       610  *
+0447                       611  * Get a byte into A, allow different 1st char
+0447                       612  *
+0447  CD 4D 04             613  GETHEXC	CALL	GETNIB		;Get nibble
+044A  30 EE                614  	JR	NC,geth1	;All is OK
+044C  C9                   615  	RET
+044D                       616  *
+044D                       617  * Get nibble into A
+044D                       618  *
+044D  CD 62 04             619  GETNIB	CALL	GETC		;Get char
+0450  FE 30                620  	CP	'0'		;In range
+0452  D8                   621  	RET	C		;Error
+0453  D6 30                622  	SUB	'0'		;Convert number
+0455  FE 0A                623  	CP	$0A		;0-9?
+0457  3F                   624  	CCF			;Toggle 'C' state (1=error)
+0458  D0                   625  	RET	NC		;Yes, its OK
+0459  D6 07                626  	SUB	7		;Convert alpha
+045B  FE 0A                627  	CP	$0A		;In range?
+DUNFIELD Z80 ASSEMBLER:                                               PAGE: 12
+
+045D  D8                   628  	RET	C		;Error
+045E  FE 10                629  	CP	$10		;In range?
+0460  3F                   630  	CCF			;Toggle carry state
+0461  C9                   631  	RET
+0462                       632  *
+0462                       633  * Read character from the console
+0462                       634  *
+0462  C5                   635  GETC	PUSH	BC		;Save for later
+0463  3A 10 78             636  	LD	A,(IOCTL)	;Get I/O control byte
+0466  47                   637  	LD	B,A		;Copy for later
+0467  CD A5 0F             638  getc1	CALL	TESTC		;Test for character
+046A  A7                   639  	AND	A		;Any data?
+046B  28 FA                640  	JR	Z,getc1		;Keep trying
+046D                       641  * Test for echo
+046D  CB 70                642  	BIT	6,B		;Test bit flag
+046F  28 03                643  	JR	Z,getc2		;Do not echo
+0471  CD AD 0F             644  	CALL	PUTC		;Output
+0474                       645  * Test for convert to upper case
+0474  CB 68                646  getc2	BIT	5,B		;Test bit flags
+0476  28 06                647  	JR	Z,getc3		;Do not convert
+0478  FE 61                648  	CP	'a'		;Need conversion?
+047A  38 02                649  	JR	C,getc3		;No, skip it
+047C  E6 5F                650  	AND	%01011111	;Convert to upper
+047E  C1                   651  getc3	POP	BC		;Restore
+047F  C9                   652  	RET
+0480                       653  *
+0480                       654  * Get address into H:L
+0480                       655  *
+0480  CD 34 04             656  GETADR	CALL	GETHEX		;Get HIGH
+0483  67                   657  geta1	LD	H,A		;Save HIGH
+0484  CD 34 04             658  	CALL	GETHEX		;Get LOW
+0487  6F                   659  	LD	L,A		;Save LOW
+0488  C9                   660  	RET
+0489                       661  *
+0489                       662  * Get range of address into HL:DE
+0489                       663  *
+0489  01 00 00             664  GETRANG	LD	BC,0		;Get default
+048C  CD 9D 04             665  	CALL	GETADRD		;Get first
+048F  EB                   666  	EX	DE,HL		;Swap
+0490  3E 2C                667  	LD	A,','		;Separator
+0492  CD AD 0F             668  	CALL	PUTC		;Write it
+0495  01 FF FF             669  	LD	BC,$FFFF	;Get default
+0498  CD 9D 04             670  	CALL	GETADRD		;Get address
+049B  EB                   671  	EX	DE,HL		;Swap
+049C  C9                   672  	RET
+049D                       673  *
+049D                       674  * Get address into H:L and allow extra char for default address
+049D                       675  *
+049D  CD 47 04             676  GETADRD	CALL	GETHEXC		;Get HIGH
+04A0  30 E1                677  	JR	NC,geta1	;Normal
+04A2  FE 20                678  	CP	' '		;Space?
+04A4  C2 29 01             679  	JP	NZ,ERROR	;Error
+04A7  3E 08                680  	LD	A,8		;Backspace
+04A9  CD AD 0F             681  	CALL	PUTC		;Output
+04AC  60                   682  	LD	H,B		;Get HIGH
+04AD  69                   683  	LD	L,C		;Get LOW
+04AE                       684  *
+DUNFIELD Z80 ASSEMBLER:                                               PAGE: 13
+
+04AE                       685  * Write address (HL) to console in HEX
+04AE                       686  *
+04AE  7C                   687  WRADDR	LD	A,H		;Get high
+04AF  CD B3 04             688  	CALL	WRBYTE		;Output
+04B2  7D                   689  	LD	A,L		;Get LOW
+04B3                       690  *
+04B3                       691  * Write byte (A) to console in HEX
+04B3                       692  *
+04B3  F5                   693  WRBYTE	PUSH	AF		;Save ACC
+04B4  CB 1F                694  	RR	A		;Shift it
+04B6  CB 1F                695  	RR	A		;Over one
+04B8  CB 1F                696  	RR	A		;Nibble to
+04BA  CB 1F                697  	RR	A		;High
+04BC  CD C0 04             698  	CALL	WRNIB		;Output high nibble
+04BF  F1                   699  	POP	AF		;Restore ACC
+04C0                       700  *
+04C0                       701  * Write nibble (A) to console
+04C0                       702  *
+04C0  F5                   703  WRNIB	PUSH	AF		;Save ACC
+04C1  E6 0F                704  	AND	%00001111	;Mask high
+04C3  FE 0A                705  	CP	$0A		;In range?
+04C5  38 02                706  	JR	C,wrnib1	;Yes, its OK
+04C7  C6 07                707  	ADD	A,7		;Adjust
+04C9  C6 30                708  wrnib1	ADD	A,'0'		;Convert to printable
+04CB  CD AD 0F             709  	CALL	PUTC		;Output
+04CE  F1                   710  	POP	AF		;Restore
+04CF  C9                   711  	RET
+04D0                       712  *
+04D0                       713  * Write Line-Feed, Carriage-Return to console
+04D0                       714  *
+04D0  CD A5 0F             715  LFCR	CALL	TESTC		;Test for character
+04D3  FE 1B                716  	CP	$1B		;Quit
+04D5  CA E7 00             717  	JP	Z,ENTMON	;Enter monitor
+04D8  FE 0D                718  	CP	$0D		;Release output?
+04DA  20 0A                719  	JR	NZ,lfcr1	;No, try next
+04DC  3A 10 78             720  	LD	A,(IOCTL)	;Get I/O control byte
+04DF  E6 7F                721  	AND	%01111111	;Clear pause bit
+04E1  32 10 78             722  	LD	(IOCTL),A	;Resave
+04E4  18 16                723  	JR	lfcr4		;Resume output
+04E6  FE 20                724  lfcr1	CP	' '		;Pause output
+04E8  20 0B                725  	JR	NZ,lfcr2	;No, try next
+04EA  3A 10 78             726  	LD	A,(IOCTL)	;Get I/O control byte
+04ED  EE 80                727  	XOR	%10000000	;Toggle pause bit
+04EF  F2 FC 04             728  	JP	P,lfcr4		;Already set, allow 1 line
+04F2  32 10 78             729  	LD	(IOCTL),A	;Resave control byte
+04F5  3A 10 78             730  lfcr2	LD	A,(IOCTL)	;Get I/O control bit
+04F8  A7                   731  	AND	A		;Test pause bit
+04F9  FA D0 04             732  	JP	M,LFCR		;Paused - wait
+04FC  3E 0A                733  lfcr4	LD	A,$0A		;Get LF
+04FE  CD AD 0F             734  	CALL	PUTC		;Output it
+0501  3E 0D                735  	LD	A,$0D		;Get CR
+0503  C3 AD 0F             736  	JP	PUTC		;Output & return
+0506                       737  *
+0506                       738  * Write a space to the console
+0506                       739  *
+0506  3E 20                740  SPACE	LD	A,' '		;Get space
+0508  C3 AD 0F             741  	JP	PUTC		;Output
+DUNFIELD Z80 ASSEMBLER:                                               PAGE: 14
+
+050B                       742  *
+050B                       743  * Write message (PC) to the console
+050B                       744  *
+050B  E1                   745  WRMSG	POP	HL		;Get pointer to message
+050C  CD 10 05             746  	CALL	WRSTR		;Output the string
+050F  E9                   747  	JP	(HL)		;Execute at end
+0510                       748  *
+0510                       749  * Write string (HL) to the console
+0510                       750  *
+0510  7E                   751  WRSTR	LD	A,(HL)		;Get character
+0511  23                   752  	INC	HL		;Advance to next
+0512  A7                   753  	AND	A		;Last one?
+0513  C8                   754  	RET	Z		;Yes, quit
+0514  CD AD 0F             755  	CALL	PUTC		;Output
+0517  18 F7                756  	JR	WRSTR		;Get next
+0519                       757  *
+0519                       758  * Disassemble instruction (HL) and display on screen
+0519                       759  *
+0519                       760  * Display address for disassembly
+0519  22 29 78             761  DISASM	LD	(TEMP),HL	;Save address
+051C  CD AE 04             762  	CALL	WRADDR		;Output address
+051F                       763  * Disassembly instruction into memory buffer
+051F  D5                   764  	PUSH	DE		;Save DE
+0520  C5                   765  	PUSH	BC		;Save BC
+0521  CD 7C 05             766  	CALL	disass		;Disassemble the code into buffer
+0524                       767  * Display the instruction bytes in HEX
+0524  EB                   768  	EX	DE,HL		;DE = end address
+0525  2A 29 78             769  	LD	HL,(TEMP)	;Get starting address
+0528  06 05                770  	LD	B,5		;Max spaces
+052A  CD 06 05             771  dis1	CALL	SPACE		;Space over
+052D  7E                   772  	LD	A,(HL)		;Get data
+052E  23                   773  	INC	HL		;Skip to next
+052F  CD B3 04             774  	CALL	WRBYTE		;Output
+0532  05                   775  	DEC	B		;Reduce count
+0533  CD 55 02             776  	CALL	CHLDE		;Are we at end?
+0536  20 F2                777  	JR	NZ,dis1		;No, keep going
+0538  CD 06 05             778  dis2	CALL	SPACE		;Filler
+053B  CD 06 05             779  	CALL	SPACE		;Filler
+053E  CD 06 05             780  	CALL	SPACE		;Filler
+0541  10 F5                781  	DJNZ	dis2		;Do them all
+0543                       782  * Display instruction bytes as ASCII
+0543  2A 29 78             783  	LD	HL,(TEMP)	;Get starting address
+0546  06 08                784  	LD	B,8		;Max spaces
+0548  7E                   785  dis3	LD	A,(HL)		;Get data
+0549  23                   786  	INC	HL		;Advance to next
+054A  CD 5B 02             787  	CALL	WRPRINT		;Display
+054D  05                   788  	DEC	B		;Reduce count
+054E  CD 55 02             789  	CALL	CHLDE		;Are we at end?
+0551  20 F5                790  	JR	NZ,dis3		;No, keep going
+0553  CD 06 05             791  dis4	CALL	SPACE		;Filler
+0556  10 FB                792  	DJNZ	dis4		;Do them all
+0558                       793  * Display contents of disassembly buffer
+0558  DD 21 2D 78          794  	LD	IX,BUFFER	;Point to buffer
+055C  DD 7E 00             795  dis5	LD	A,(IX)		;Get data from memory
+055F  A7                   796  	AND	A		;End of list
+0560  28 17                797  	JR	Z,dis8		;Yes, stop
+0562  DD 23                798  	INC	IX		;Advance
+DUNFIELD Z80 ASSEMBLER:                                               PAGE: 15
+
+0564  FE 20                799  	CP	' '		;Special case?
+0566  28 06                800  	JR	Z,dis7		;Handle it
+0568  CD AD 0F             801  	CALL	PUTC		;Output
+056B  04                   802  	INC	B		;Advance count
+056C  18 EE                803  	JR	dis5		;And continue
+056E  CD 06 05             804  dis7	CALL	SPACE		;Output space
+0571  04                   805  	INC	B		;Advance count
+0572  78                   806  	LD	A,B		;Get count
+0573  E6 07                807  	AND	%00000111	;8 character tab
+0575  20 F7                808  	JR	NZ,dis7		;Do all spaces
+0577  18 E3                809  	JR	dis5		;Continue
+0579  C1                   810  dis8	POP	BC		;Restore BC
+057A  D1                   811  	POP	DE		;Restore DE
+057B  C9                   812  	RET
+057C                       813  *
+057C                       814  * Disassemble instruction (HL) and place in memory buffer (IX)
+057C                       815  *
+057C                       816  * Lookup opcode (HL) in table
+057C  7E                   817  disass	LD	A,(HL)		;Get opcode
+057D  23                   818  	INC	HL		;Skip to next
+057E  11 CF 0A             819  	LD	DE,DTABCB	;Ready CB table
+0581  FE CB                820  	CP	$CB		;CB prefix?
+0583  28 19                821  	JR	Z,disa1		;Yes
+0585  11 19 0B             822  	LD	DE,DTABDD	;Ready DD table
+0588  FE DD                823  	CP	$DD		;DD prefix?
+058A  28 12                824  	JR	Z,disa1		;Yes
+058C  11 01 0D             825  	LD	DE,DTABED	;Ready ED table
+058F  FE ED                826  	CP	$ED		;ED prefix?
+0591  28 0B                827  	JR	Z,disa1		;Yes
+0593  11 0D 0C             828  	LD	DE,DTABFD	;Read FD prefix
+0596  FE FD                829  	CP	$FD		;FD prefix?
+0598  28 04                830  	JR	Z,disa1		;Yes
+059A  11 10 09             831  	LD	DE,DTAB		;Switch to normal table
+059D  2B                   832  	DEC	HL		;Backup
+059E  7E                   833  disa1	LD	A,(HL)		;Get opcode
+059F  23                   834  	INC	HL		;Advance to next
+05A0  32 2B 78             835  	LD	(TEMP1),A	;Save opcode for later
+05A3  47                   836  	LD	B,A		;Save opcode for later
+05A4                       837  * Lookup opcode (B) in table (DE)
+05A4  1A                   838  	LD	A,(DE)		;Get mask
+05A5  13                   839  	INC	DE		;Advance to next
+05A6  A0                   840  disa2	AND	B		;Get masked opcode
+05A7  4F                   841  	LD	C,A		;Save for later
+05A8  1A                   842  	LD	A,(DE)		;Get table opcode
+05A9  13                   843  	INC	DE		;Skip it
+05AA  B9                   844  	CP	C		;Compare against masked opcode
+05AB  28 0A                845  	JR	Z,disa4		;We found it!
+05AD                       846  * This one isn't it, skip to the next one
+05AD  1A                   847  disa3	LD	A,(DE)		;Get data from table
+05AE  13                   848  	INC	DE		;Skip to next
+05AF  A7                   849  	AND	A		;End of entry?
+05B0  20 FB                850  	JR	NZ,disa3	;Keep looking
+05B2  1A                   851  	LD	A,(DE)		;Get next mask
+05B3  13                   852  	INC	DE		;Skip it
+05B4  A7                   853  	AND	A		;End of table?
+05B5  20 EF                854  	JR	NZ,disa2	;Keep looking
+05B7                       855  * We found opcode, handle it
+DUNFIELD Z80 ASSEMBLER:                                               PAGE: 16
+
+05B7  DD 21 2D 78          856  disa4	LD	IX,BUFFER	;Point to output buffer
+05BB                       857  * Move data from disassembly table to output buffer with translations
+05BB  1A                   858  disa5	LD	A,(DE)		;Get char from table
+05BC  A7                   859  	AND	A		;End of table?
+05BD  CA A9 06             860  	JP	Z,disa900	;We are finished
+05C0  13                   861  	INC	DE		;Advance to next
+05C1  FA A1 06             862  	JP	M,disa100	;Special substuted symbol
+05C4                       863  * Test for 's' source register
+05C4  FE 73                864  	CP	's'		;Source register
+05C6  20 21                865  	JR	NZ,disa7	;No, try next
+05C8  3A 2B 78             866  	LD	A,(TEMP1)	;Get opcode back
+05CB  E6 07                867  disa6	AND	%00000111	;Allow only 8 entries
+05CD  01 00 08             868  	LD	BC,REGTAB	;Point to table
+05D0  E5                   869  disa61	PUSH	HL		;Save HL
+05D1  6F                   870  	LD	L,A		;Get ID number
+05D2  26 00                871  	LD	H,0		;Zero high
+05D4  29                   872  	ADD	HL,HL		;x2
+05D5  29                   873  	ADD	HL,HL		;x4
+05D6  09                   874  	ADD	HL,BC		;Offset to table
+05D7  0E 04                875  	LD	C,4		;Max four chars
+05D9  7E                   876  disa62	LD	A,(HL)		;Get char
+05DA  A7                   877  	AND	A		;Premature end?
+05DB  28 09                878  	JR	Z,disa63	;Exit
+05DD  23                   879  	INC	HL		;Advance
+05DE  DD 77 00             880  	LD	(IX),A		;Write to buffer
+05E1  DD 23                881  	INC	IX		;Advance buffer
+05E3  0D                   882  	DEC	C		;Reduce count
+05E4  20 F3                883  	JR	NZ,disa62	;Do them all
+05E6  E1                   884  disa63	POP	HL		;Restore HL
+05E7  18 D2                885  	JR	disa5		;Do next entry
+05E9                       886  * Test for 'd' destination register
+05E9  FE 64                887  disa7	CP	'd'		;Destination register?
+05EB  20 08                888  	JR	NZ,disa8	;No, try next
+05ED  3A 2B 78             889  	LD	A,(TEMP1)	;Get opcode back
+05F0  1F                   890  	RRA			;Shift
+05F1  1F                   891  	RRA			;Over into
+05F2  1F                   892  	RRA			;Source position
+05F3  18 D6                893  	JR	disa6		;And output
+05F5                       894  * Test for 'p' register pair
+05F5  FE 70                895  disa8	CP	'p'		;Register pair
+05F7  20 0E                896  	JR	NZ,disa9	;No, try next
+05F9  01 20 08             897  	LD	BC,RPTAB	;Point to table
+05FC  3A 2B 78             898  disa81	LD	A,(TEMP1)	;Get opcode back
+05FF  1F                   899  	RRA			;Shift
+0600  1F                   900  	RRA			;Over into
+0601  1F                   901  	RRA			;Low bits of
+0602  1F                   902  	RRA			;Acc
+0603  E6 03                903  	AND	%00000011	;Mask off
+0605  18 C9                904  	JR	disa61		;Output and proceed
+0607                       905  * Test for 'b', byte operand
+0607  FE 62                906  disa9	CP	'b'		;Byte operand?
+0609  20 07                907  	JR	NZ,disa10	;No, try next
+060B  7E                   908  	LD	A,(HL)		;Get data from memory
+060C  23                   909  	INC	HL		;Advance
+060D  CD AE 06             910  disa91	CALL	IXBYTE		;Write it
+0610  18 A9                911  	JR	disa5		;And proceed
+0612                       912  * Test for 'w', word operand
+DUNFIELD Z80 ASSEMBLER:                                               PAGE: 17
+
+0612  FE 77                913  disa10	CP	'w'		;Word operand
+0614  20 0D                914  	JR	NZ,disa11	;No, try next
+0616  46                   915  	LD	B,(HL)		;Get low
+0617  23                   916  	INC	HL		;Advanve
+0618  7E                   917  	LD	A,(HL)		;Get HIGH
+0619  23                   918  	INC	HL		;Advanve
+061A  CD AE 06             919  	CALL	IXBYTE		;output
+061D  78                   920  	LD	A,B		;Get LOW
+061E  CD AE 06             921  	CALL	IXBYTE		;Output
+0621  18 98                922  	JR	disa5		;And proceed
+0623                       923  * Test for 'x' register pair IX=HL
+0623  FE 78                924  disa11	CP	'x'		;IX pair?
+0625  20 05                925  	JR	NZ,disa12	;No, try next
+0627  01 30 08             926  	LD	BC,RPTABX	;Point to special table
+062A  18 D0                927  	JR	disa81		;And process
+062C                       928  * Test for 'y' register pair IY=HL
+062C  FE 79                929  disa12	CP	'y'		;IY pair?
+062E  20 05                930  	JR	NZ,disa13	;No, try next
+0630  01 40 08             931  	LD	BC,RPTABY	;Point to special table
+0633  18 C7                932  	JR	disa81		;And process
+0635                       933  * Test for 'c' condition code specification
+0635  FE 63                934  disa13	CP	'c'		;Condition code
+0637  20 0D                935  	JR	NZ,disa14	;No, try next
+0639  3A 2B 78             936  	LD	A,(TEMP1)	;Get opcode
+063C  1F                   937  	RRA			;Shift
+063D  1F                   938  	RRA			;Over to
+063E  1F                   939  	RRA			;Zero base
+063F  E6 07                940  	AND	%00000111	;Mask unused bit
+0641  01 50 08             941  	LD	BC,CCTAB	;Point to table
+0644  18 8A                942  	JR	disa61		;And process
+0646                       943  * Test for 'r' relative address
+0646  FE 72                944  disa14	CP	'r'		;Relative address?
+0648  20 17                945  	JR	NZ,disa15	;No, try next
+064A  7E                   946  	LD	A,(HL)		;Get value
+064B  23                   947  	INC	HL		;Skip operand
+064C  06 00                948  	LD	B,0		;Assume zero carry
+064E  A7                   949  	AND	A		;Test for negative
+064F  F2 53 06             950  	JP	P,disa14a	;Assumption correct
+0652  05                   951  	DEC	B		;Adjust to negative
+0653  85                   952  disa14a	ADD	A,L		;Compute lower
+0654  4F                   953  	LD	C,A		;Save for later
+0655  7C                   954  	LD	A,H		;Get HIGH
+0656  88                   955  	ADC	A,B		;Compute high
+0657  CD AE 06             956  	CALL	IXBYTE		;Write it
+065A  79                   957  	LD	A,C		;Get LOW
+065B  CD AE 06             958  	CALL	IXBYTE		;Write it
+065E  C3 BB 05             959  	JP	disa5		;And proceed
+0661                       960  * Test for 'z', special double prefix
+0661  FE 7A                961  disa15	CP	'z'		;Special mode?
+0663  20 1D                962  	JR	NZ,disa16	;No, try next
+0665  7E                   963  	LD	A,(HL)		;Get operand 'd' byte
+0666  32 2C 78             964  	LD	(TEMP2),A	;Save for later
+0669  23                   965  	INC	HL		;Advance
+066A  7E                   966  	LD	A,(HL)		;Get post byte
+066B  32 2B 78             967  	LD	(TEMP1),A	;Save for later
+066E  47                   968  	LD	B,A		;Save for later
+066F  1A                   969  	LD	A,(DE)		;Get Mask
+DUNFIELD Z80 ASSEMBLER:                                               PAGE: 18
+
+0670  A0                   970  	AND	B		;Get masked opcode
+0671  4F                   971  	LD	C,A		;Save for later
+0672  13                   972  	INC	DE		;Advance to opcode
+0673  1A                   973  	LD	A,(DE)		;Get required opcode
+0674  13                   974  	INC	DE		;Skip to next
+0675  B9                   975  	CP	C		;Does it match?
+0676  28 06                976  	JR	Z,disa15a	;Yes, we have it
+0678  2B                   977  	DEC	HL		;No fix error
+0679  06 CB                978  	LD	B,$CB		;Get opcode
+067B  C3 AD 05             979  	JP	disa3		;Keep going
+067E  23                   980  disa15a	INC	HL		;Advance to next
+067F  C3 BB 05             981  	JP	disa5		;And proceed
+0682                       982  * Test for 'v', special post d byte
+0682  FE 76                983  disa16	CP	'v'		;Specal post dbyte
+0684  20 05                984  	JR	NZ,disa17	;No, try next
+0686  3A 2C 78             985  	LD	A,(TEMP2)	;Get postbyte
+0689  18 82                986  	JR	disa91		;Output & proceed
+068B                       987  * Test for 'n' numeric value from opcode
+068B  FE 6E                988  disa17	CP	'n'		;Numeric value
+068D  20 0A                989  	JR	NZ,disa18	;No, try next
+068F  3A 2B 78             990  	LD	A,(TEMP1)	;Get opcode back
+0692  1F                   991  	RRA
+0693  1F                   992  	RRA
+0694  1F                   993  	RRA
+0695  E6 07                994  	AND	%00000111	;Save only number
+0697  C6 30                995  	ADD	A,'0'		;Convert to ASCII
+0699                       996  * No special operation
+0699  DD 77 00             997  disa18	LD	(IX),A		;Copy to buffer
+069C  DD 23                998  	INC	IX		;Advance
+069E  C3 BB 05             999  	JP	disa5		;And continue
+06A1                      1000  * Write special opcode
+06A1  E6 7F               1001  disa100	AND	%01111111	;Clear high bit
+06A3  01 70 08            1002  	LD	BC,TABTAB	;Point to table
+06A6  C3 D0 05            1003  	JP	disa61		;Output and proceed
+06A9                      1004  * End of disassembly
+06A9  DD 36 00 00         1005  disa900	LD	(IX),0		;Zero terminate
+06AD  C9                  1006  	RET
+06AE                      1007  *
+06AE                      1008  * Write byte (A) to (IX)
+06AE                      1009  *
+06AE  F5                  1010  IXBYTE	PUSH	AF		;Save ACC
+06AF  CB 1F               1011  	RR	A		;Shift it
+06B1  CB 1F               1012  	RR	A		;Over one
+06B3  CB 1F               1013  	RR	A		;Nibble to
+06B5  CB 1F               1014  	RR	A		;High
+06B7  CD BB 06            1015  	CALL	IXNIB		;Output high nibble
+06BA  F1                  1016  	POP	AF		;Restore ACC
+06BB  F5                  1017  IXNIB	PUSH	AF		;Save ACC
+06BC  E6 0F               1018  	AND	%00001111	;Mask high
+06BE  FE 0A               1019  	CP	$0A		;In range?
+06C0  38 02               1020  	JR	C,ixnib1	;Yes, its OK
+06C2  C6 07               1021  	ADD	A,7		;Adjust
+06C4  C6 30               1022  ixnib1	ADD	A,'0'		;Convert to printable
+06C6  DD 77 00            1023  	LD	(IX),A		;Write to string
+06C9  DD 23               1024  	INC	IX		;Advance
+06CB  F1                  1025  	POP	AF		;Restore
+06CC  C9                  1026  	RET
+DUNFIELD Z80 ASSEMBLER:                                               PAGE: 19
+
+06CD                      1027  *
+06CD                      1028  *---------------------------------
+06CD                      1029  * Single step one instruction (HL)
+06CD                      1030  *---------------------------------
+06CD                      1031  *
+06CD  2A 0C 78            1032  GOSTEP	LD	HL,(uPC)	;Get user PC
+06D0  E5                  1033  	PUSH	HL		;Save for later
+06D1  CD 7C 05            1034  	CALL	DISASS		;Disassemble (no display)
+06D4  C1                  1035  	POP	BC		;C = copy of lower
+06D5  7D                  1036  GOSTEP1	LD	A,L		;Get low address
+06D6  91                  1037  	SUB	C		;Compute length
+06D7  4F                  1038  	LD	C,A		;Set LOW count value
+06D8  06 00               1039  	LD	B,0		;Zero high
+06DA                      1040  * Copy code into buffer for execution (if necessary)
+06DA  2A 0C 78            1041  	LD	HL,(uPC)	;Point to code address
+06DD  11 2D 78            1042  	LD	DE,BUFFER	;Point to buffer
+06E0  ED B0               1043  	LDIR			;Copy instruction into buffer
+06E2  22 0C 78            1044  	LD	(uPC),HL	;Update program counter
+06E5  EB                  1045  	EX	DE,HL		;Hl = buffer address
+06E6  36 C3               1046  	LD	(HL),$C3	;Jump instruction
+06E8  23                  1047  	INC	HL		;Advance
+06E9  36 2E               1048  	LD	(HL),STEPRET	;Write low address
+06EB  23                  1049  	INC	HL		;Advance
+06EC  36 07               1050  	LD	(HL),=STEPRET	;Write high address
+06EE                      1051  * Test instruction to see if it affects program control
+06EE  3A 2D 78            1052  	LD	A,(BUFFER)	;Get opcode
+06F1  4F                  1053  	LD	C,A		;C = opcode
+06F2  21 CF 0D            1054  	LD	HL,EFTAB	;Point to execution flow table
+06F5  06 10               1055  	LD	B,(EFEND-EFTAB)/4;Get size of table
+06F7  7E                  1056  step1	LD	A,(HL)		;Get mask
+06F8  23                  1057  	INC	HL		;Advance
+06F9  A1                  1058  	AND	C		;Get masked opcode
+06FA  BE                  1059  	CP	(HL)		;Compare against opcode
+06FB  23                  1060  	INC	HL		;Skip to next
+06FC  28 2B               1061  	JR	Z,step3		;Execute
+06FE  23                  1062  	INC	HL		;Skip LOW address
+06FF  23                  1063  	INC	HL		;Skip HIGH address
+0700  10 F5               1064  	DJNZ	step1		;Keep looking
+0702                      1065  * Restore user registers and execute instruction in buffer
+0702  21 00 00            1066  step2	LD	HL,0		;Get zero
+0705  39                  1067  	ADD	HL,SP		;Get stack
+0706  22 2B 78            1068  	LD	(TEMP1),HL	;Save stack
+0709  DD 2A 08 78         1069  	LD	IX,(uIX)	;Get IX
+070D  FD 2A 0A 78         1070  	LD	IY,(uIY)	;Get IY
+0711  2A 02 78            1071  	LD	HL,(uBC)	;Get BC
+0714  44                  1072  	LD	B,H		;Copy
+0715  4D                  1073  	LD	C,L		;Copy
+0716  2A 04 78            1074  	LD	HL,(uDE)	;Get DE
+0719  EB                  1075  	EX	DE,HL		;Copy
+071A  2A 00 78            1076  	LD	HL,(uAF)	;Get AF
+071D  E5                  1077  	PUSH	HL		;Save
+071E  F1                  1078  	POP	AF		;Copy
+071F  2A 0E 78            1079  	LD	HL,(uSP)	;Get user SP
+0722  F9                  1080  	LD	SP,HL		;Copy
+0723  2A 06 78            1081  	LD	HL,(uHL)	;Get user HL
+0726  C3 2D 78            1082  	JP	BUFFER		;Execute user program
+0729                      1083  * Execute handler for special instructions requiring interpretation
+DUNFIELD Z80 ASSEMBLER:                                               PAGE: 20
+
+0729  7E                  1084  step3	LD	A,(HL)		;Get LOW address
+072A  23                  1085  	INC	HL		;Skip to next
+072B  66                  1086  	LD	H,(HL)		;Get HIGH address
+072C  6F                  1087  	LD	L,A		;Set LOW address
+072D  E9                  1088  	JP	(HL)		;Execute handler
+072E                      1089  * Return from single step. Like breakpoint, but no PC
+072E  22 06 78            1090  STEPRET	LD	(uHL),HL	;Save HL
+0731  F5                  1091  	PUSH	AF		;Get AF
+0732  E1                  1092  	POP	HL		;Copy
+0733  22 00 78            1093  	LD	(uAF),HL	;Save AF
+0736  21 00 00            1094  	LD	HL,0		;Get 0
+0739  39                  1095  	ADD	HL,SP		;Get SP
+073A  22 0E 78            1096  	LD	(uSP),HL	;Save SP
+073D  EB                  1097  	EX	DE,HL		;Get DE
+073E  22 04 78            1098  	LD	(uDE),HL	;Save DE
+0741  60                  1099  	LD	H,B		;Get B
+0742  69                  1100  	LD	L,C		;Get C
+0743  22 02 78            1101  	LD	(uBC),HL	;Save BC
+0746  DD 22 08 78         1102  	LD	(uIX),IX	;Save IX
+074A  FD 22 0A 78         1103  	LD	(uIY),IY	;Save IY
+074E  2A 2B 78            1104  	LD	HL,(TEMP1)	;Get our stack
+0751  F9                  1105  	LD	SP,HL		;Set out stack
+0752  C9                  1106  	RET
+0753                      1107  *
+0753                      1108  * DD prefix's
+0753                      1109  *
+0753  3A 2E 78            1110  EXDDP	LD	A,(BUFFER+1)	;Get opcode
+0756  FE E9               1111  	CP	$E9		;JP (IX)?
+0758  20 A8               1112  	JR	NZ,step2	;No, execute
+075A  2A 08 78            1113  	LD	HL,(uIX)	;Get user IX
+075D  18 67               1114  	JR	GOHL		;And execute
+075F                      1115  *
+075F                      1116  * FD prefix's
+075F                      1117  *
+075F  3A 2E 78            1118  EXFDP	LD	A,(BUFFER+1)	;Get opcode
+0762  FE E9               1119  	CP	$E9		;JP (IY)?
+0764  20 9C               1120  	JR	NZ,step2	;No, execute
+0766  2A 0A 78            1121  	LD	HL,(uIY)	;Get user IY
+0769  18 5B               1122  	JR	GOHL		;And proceed
+076B                      1123  *
+076B                      1124  * Restart instruction
+076B                      1125  *
+076B  79                  1126  EXRST	LD	A,C		;Get opcode
+076C  E6 38               1127  	AND	%00111000	;Save number*8
+076E  6F                  1128  	LD	L,A		;Set LOW
+076F  26 00               1129  	LD	H,0		;Set high
+0771  22 0C 78            1130  	LD	(uPC),HL	;Set new address
+0774  C9                  1131  	RET
+0775                      1132  *
+0775                      1133  * Jump indirect through HL
+0775                      1134  *
+0775  2A 06 78            1135  EXJPHL	LD	HL,(uHL);	;Get HL register
+0778  18 4C               1136  	JR	GOHL		;Set new address
+077A                      1137  *
+077A                      1138  * Conditional JR's
+077A                      1139  *
+077A  0E 18               1140  EXJRC	LD	C,%00011000	;Get 'C' condition
+DUNFIELD Z80 ASSEMBLER:                                               PAGE: 21
+
+077C  18 0A               1141  	JR	EXJPC		;Execute conditional
+077E  0E 10               1142  EXJRNC	LD	C,%00010000	;Get 'NC' condition
+0780  18 06               1143  	JR	EXJPC		;Execute conditional
+0782  0E 08               1144  EXJRZ	LD	C,%00001000	;Get 'Z' conditional
+0784  18 02               1145  	JR	EXJPC		;Execute conditional
+0786  0E 00               1146  EXJRNZ	LD	C,%00000000	;Get 'NZ' conditoinal
+0788                      1147  *
+0788                      1148  * Jump absolute conditional
+0788                      1149  *
+0788  CD E0 07            1150  EXJPC	CALL	TESTCC		;Test condition code
+078B  20 3C               1151  	JR	NZ,EXSKP	;Not taken
+078D                      1152  *
+078D                      1153  * JP instruction
+078D                      1154  *
+078D  2A 2E 78            1155  EXJP	LD	HL,(BUFFER+1)	;Get operand
+0790  18 34               1156  	JR	GOHL		;Execute
+0792                      1157  *
+0792                      1158  * DJNZ instruction
+0792                      1159  *
+0792  3A 03 78            1160  EXDJNZ	LD	A,(uBC+1)	;Get 'B' value
+0795  3D                  1161  	DEC	A		;Adjust
+0796  32 03 78            1162  	LD	(uBC+1),A	;Resave
+0799  28 2E               1163  	JR	Z,EXSKP		;Skip if zero
+079B                      1164  *
+079B                      1165  * JR instruction
+079B                      1166  *
+079B  3A 2E 78            1167  EXJR	LD	A,(BUFFER+1)	;Get offset
+079E  4F                  1168  	LD	C,A		;Save it
+079F  06 00               1169  	LD	B,0		;Assume positive
+07A1  A7                  1170  	AND	A		;Is it negative
+07A2  F2 A6 07            1171  	JP	P,exjr1		;No, assumption correct
+07A5  05                  1172  	DEC	B		;Sign extend
+07A6  2A 0C 78            1173  exjr1	LD	HL,(uPC)	;Get user PC
+07A9  09                  1174  	ADD	HL,BC		;Adjust for offset
+07AA  18 1A               1175  	JR	GOHL		;Set new address
+07AC                      1176  *
+07AC                      1177  * Conditional CALL
+07AC                      1178  *
+07AC  CD E0 07            1179  EXCALLC	CALL	TESTCC		;Test condition codes
+07AF  20 18               1180  	JR	NZ,EXSKP	;Not taken
+07B1                      1181  *
+07B1                      1182  * CALL instruction
+07B1                      1183  *
+07B1  2A 2E 78            1184  EXCALL	LD	HL,(BUFFER+1)	;Get operand
+07B4                      1185  * Stack PC and reset to HL
+07B4  EB                  1186  GOHLS	EX	DE,HL		;Free HL
+07B5  2A 0E 78            1187  	LD	HL,(uSP)	;Get user SP
+07B8  2B                  1188  	DEC	HL		;Backup stack
+07B9  3A 0D 78            1189  	LD	A,(uPC+1)	;Get HIGH pc
+07BC  77                  1190  	LD	(HL),A		;Stack it
+07BD  2B                  1191  	DEC	HL		;Backup stack
+07BE  3A 0C 78            1192  	LD	A,(uPC)		;Get LOW pc
+07C1  77                  1193  	LD	(HL),A		;Stack it
+07C2  22 0E 78            1194  	LD	(uSP),HL	;set HL
+07C5  EB                  1195  	EX	DE,HL		;Get address back
+07C6  22 0C 78            1196  GOHL	LD	(uPC),HL	;Set new address
+07C9  C9                  1197  EXSKP	RET
+DUNFIELD Z80 ASSEMBLER:                                               PAGE: 22
+
+07CA                      1198  *
+07CA                      1199  * Conditional return
+07CA                      1200  *
+07CA  CD E0 07            1201  EXRETC	CALL	TESTCC		;Test condition codes
+07CD  20 FA               1202  	JR	NZ,EXSKP	;Not taken
+07CF                      1203  *
+07CF                      1204  * Return instruction
+07CF                      1205  *
+07CF  2A 0E 78            1206  EXRET	LD	HL,(uSP)	;Get user SP
+07D2  7E                  1207  	LD	A,(HL)		;Get LOW address
+07D3  32 0C 78            1208  	LD	(uPC),A		;Set it
+07D6  23                  1209  	INC	HL		;Advance
+07D7  7E                  1210  	LD	A,(HL)		;Get HIGH address
+07D8  32 0D 78            1211  	LD	(uPC+1),A	;Set it
+07DB  23                  1212  	INC	HL		;Advance
+07DC  22 0E 78            1213  	LD	(uSP),HL	;Save new SP
+07DF  C9                  1214  	RET
+07E0                      1215  *
+07E0                      1216  * Test condition code (Opcode in C)
+07E0                      1217  *
+07E0  79                  1218  TESTCC	LD	A,C		;Get opcode
+07E1  E6 38               1219  	AND	%00111000	;Save only condition code
+07E3  F6 C2               1220  	OR	%11000010	;Convert into 'JP C'
+07E5  32 31 78            1221  	LD	(BUFFER+4),A	;Point to buffer
+07E8  21 35 78            1222  	LD	HL,BUFFER+8	;Skip INC
+07EB  22 32 78            1223  	LD	(BUFFER+5),HL	;Set offset
+07EE  21 3C C9            1224  	LD	HL,$C93C	;'INC A' + 'RET'
+07F1  22 34 78            1225  	LD	(BUFFER+7),HL	;Set it
+07F4  2A 00 78            1226  	LD	HL,(uAF)	;Get A and flags
+07F7  26 00               1227  	LD	H,0		;Zero 'A'
+07F9  E5                  1228  	PUSH	HL		;Stack it
+07FA  F1                  1229  	POP	AF		;Set A and F
+07FB  CD 31 78            1230  	CALL	BUFFER+4	;Test code
+07FE  A7                  1231  	AND	A		;Zero means jump taken
+07FF  C9                  1232  	RET
+0800                      1233  *
+0800                      1234  * ---- Disassembly tables ----
+0800                      1235  *
+0800                      1236  * Register name tables
+0800  42 00 00 00         1237  REGTAB	DB	'B',0,0,0
+0804  43 00 00 00         1238  	DB	'C',0,0,0
+0808  44 00 00 00         1239  	DB	'D',0,0,0
+080C  45 00 00 00         1240  	DB	'E',0,0,0
+0810  48 00 00 00         1241  	DB	'H',0,0,0
+0814  4C 00 00 00         1242  	DB	'L',0,0,0
+0818  28 48 4C 29         1243  	DB	'(','H','L',')'
+081C  41 00 00 00         1244  	DB	'A',0,0,0
+0820                      1245  * Register pair name table
+0820  42 43 00 00         1246  RPTAB	DB	'B','C',0,0
+0824  44 45 00 00         1247  	DB	'D','E',0,0
+0828  48 4C 00 00         1248  	DB	'H','L',0,0
+082C  53 50 00 00         1249  	DB	'S','P',0,0
+0830  42 43 00 00         1250  RPTABX	DB	'B','C',0,0
+0834  44 45 00 00         1251  	DB	'D','E',0,0
+0838  49 58 00 00         1252  	DB	'I','X',0,0
+083C  53 50 00 00         1253  	DB	'S','P',0,0
+0840  42 43 00 00         1254  RPTABY	DB	'B','C',0,0
+DUNFIELD Z80 ASSEMBLER:                                               PAGE: 23
+
+0844  44 45 00 00         1255  	DB	'D','E',0,0
+0848  49 59 00 00         1256  	DB	'I','Y',0,0
+084C  53 50 00 00         1257  	DB	'S','P',0,0
+0850                      1258  * Condition code table
+0850  4E 5A 00 00         1259  CCTAB	DB	'N','Z',0,0
+0854  5A 00 00 00         1260  	DB	'Z',0,0,0
+0858  4E 43 00 00         1261  	DB	'N','C',0,0
+085C  43 00 00 00         1262  	DB	'C',0,0,0
+0860  50 4F 00 00         1263  	DB	'P','O',0,0
+0864  50 45 00 00         1264  	DB	'P','E',0,0
+0868  50 00 00 00         1265  	DB	'P',0,0,0
+086C  4D 00 00 00         1266  	DB	'M',0,0,0
+0870                      1267  * Test abbreviations table
+0870                      1268  TABTAB	EQU	*
+0080                      1269  xLD	EQU	$80
+0870  4C 44 20 00         1270  	DB	'L','D',' ',0
+0081                      1271  xBC	EQU	$81
+0874  42 43 00 00         1272  	DB	'B','C',0,0
+0082                      1273  xDE	EQU	$82
+0878  44 45 00 00         1274  	DB	'D','E',0,0
+0083                      1275  xHL	EQU	$83
+087C  48 4C 00 00         1276  	DB	'H','L',0,0
+0084                      1277  xIX	EQU	$84
+0880  49 58 00 00         1278  	DB	'I','X',0,0
+0085                      1279  xIY	EQU	$85
+0884  49 59 00 00         1280  	DB	'I','Y',0,0
+0086                      1281  xBCI	EQU	$86
+0888  28 42 43 29         1282  	DB	'(','B','C',')'
+0087                      1283  xDEI	EQU	$87
+088C  28 44 45 29         1284  	DB	'(','D','E',')'
+0088                      1285  xHLI	EQU	$88
+0890  28 48 4C 29         1286  	DB	'(','H','L',')'
+0089                      1287  xIXI	EQU	$89
+0894  28 49 58 2B         1288  	DB	'(','I','X','+'
+008A                      1289  xIYI	EQU	$8A
+0898  28 49 59 2B         1290  	DB	'(','I','Y','+'
+008B                      1291  xACM	EQU	$8B
+089C  41 2C 00 00         1292  	DB	'A',',',0,0
+008C                      1293  xCMA	EQU	$8C
+08A0  2C 41 00 00         1294  	DB	',','A',0,0
+008D                      1295  xSP	EQU	$8D
+08A4  53 50 00 00         1296  	DB	'S','P',0,0
+008E                      1297  xPUSH	EQU	$8E
+08A8  50 55 53 48         1298  	DB	'P','U','S','H'
+008F                      1299  xPOP	EQU	$8F
+08AC  50 4F 50 20         1300  	DB	'P','O','P',' '
+0090                      1301  xAF	EQU	$90
+08B0  41 46 00 00         1302  	DB	'A','F',0,0
+0091                      1303  xEX	EQU	$91
+08B4  45 58 00 00         1304  	DB	'E','X',0,0
+0092                      1305  xLDx	EQU	$92
+08B8  4C 44 00 00         1306  	DB	'L','D',0,0
+0093                      1307  xCP	EQU	$93
+08BC  43 50 00 00         1308  	DB	'C','P',0,0
+0094                      1309  xADD	EQU	$94
+08C0  41 44 44 20         1310  	DB	'A','D','D',' '
+0095                      1311  xADC	EQU	$95
+DUNFIELD Z80 ASSEMBLER:                                               PAGE: 24
+
+08C4  41 44 43 20         1312  	DB	'A','D','C',' '
+0096                      1313  xSUB	EQU	$96
+08C8  53 55 42 20         1314  	DB	'S','U','B',' '
+0097                      1315  xSBC	EQU	$97
+08CC  53 42 43 20         1316  	DB	'S','B','C',' '
+0098                      1317  xAND	EQU	$98
+08D0  41 4E 44 20         1318  	DB	'A','N','D',' '
+0099                      1319  xOR	EQU	$99
+08D4  4F 52 20 00         1320  	DB	'O','R',' ',0
+009A                      1321  xXOR	EQU	$9A
+08D8  58 4F 52 20         1322  	DB	'X','O','R',' '
+009B                      1323  xINC	EQU	$9B
+08DC  49 4E 43 20         1324  	DB	'I','N','C',' '
+009C                      1325  xDEC	EQU	$9C
+08E0  44 45 43 20         1326  	DB	'D','E','C',' '
+009D                      1327  xRL	EQU	$9D
+08E4  52 4C 00 00         1328  	DB	'R','L',0,0
+009E                      1329  xRR	EQU	$9E
+08E8  52 52 00 00         1330  	DB	'R','R',0,0
+009F                      1331  xJP	EQU	$9F
+08EC  4A 50 20 00         1332  	DB	'J','P',' ',0
+00A0                      1333  xJR	EQU	$A0
+08F0  4A 52 20 00         1334  	DB	'J','R',' ',0
+00A1                      1335  xCALL	EQU	$A1
+08F4  43 41 4C 4C         1336  	DB	'C','A','L','L'
+00A2                      1337  xRET	EQU	$A2
+08F8  52 45 54 00         1338  	DB	'R','E','T',0
+00A3                      1339  xIN	EQU	$A3
+08FC  49 4E 00 00         1340  	DB	'I','N',0,0
+00A4                      1341  xOUT	EQU	$A4
+0900  4F 55 54 00         1342  	DB	'O','U','T',0
+00A5                      1343  xBIT	EQU	$A5
+0904  42 49 54 20         1344  	DB	'B','I','T',' '
+00A6                      1345  xSET	EQU	$A6
+0908  53 45 54 20         1346  	DB	'S','E','T',' '
+00A7                      1347  xRES	EQU	$A7
+090C  52 45 53 20         1348  	DB	'R','E','S',' '
+0910                      1349  *
+0910                      1350  * ---- Opcode Disassembly table ----
+0910                      1351  * d = reg from bits 00111000 of opcode
+0910                      1352  * s = reg from bits 00000111 of opcode
+0910                      1353  * p = reg pair1 from bits 00110000 of opcode
+0910                      1354  * x = reg pair2 with IX instead of HL
+0910                      1355  * y = reg pair3 with IY instead of HL
+0910                      1356  * b = byte value from next memory location
+0910                      1357  * w = word value from next memory location
+0910                      1358  * c = conditional code from bite 00111000 of opcode
+0910                      1359  * r = relative address from next memory location
+0910                      1360  * n = numeric value from bite 00111000 of opcode
+0910                      1361  * z = special double prefix opcode
+0910                      1362  * v = special 'd' value saved from 'z'
+0910                      1363  *
+0910  FF 76 48 41 4C 54 + 1364  DTAB	DB	$FF,$76,'H','A','L','T',0
+0917  C0 40 80 64 2C 73 + 1365  	DB	$C0,$40,xLD,'d',',','s',0
+091E  C7 06 80 64 2C 62 + 1366  	DB	$C7,$06,xLD,'d',',','b',0
+0925  FF 0A 80 8B 86 00   1367  	DB	$FF,$0A,xLD,xACM,xBCI,0
+092B  FF 1A 80 8B 87 00   1368  	DB	$FF,$1A,xLD,xACM,xDEI,0
+DUNFIELD Z80 ASSEMBLER:                                               PAGE: 25
+
+0931  FF 3A 80 8B 28 77 + 1369  	DB	$FF,$3A,xLD,xACM,'(','w',')',0
+0939  FF 02 80 86 8C 00   1370  	DB	$FF,$02,xLD,xBCI,xCMA,0
+093F  FF 12 80 87 8C 00   1371  	DB	$FF,$12,xLD,xDEI,xCMA,0
+0945  CF 01 80 70 2C 77 + 1372  	DB	$CF,$01,xLD,'p',',','w',0
+094C  FF 32 80 28 77 29 + 1373  	DB	$FF,$32,xLD,'(','w',')',xCMA,0
+0954  FF 2A 80 83 2C 28 + 1374  	DB	$FF,$2A,xLD,xHL,',','(','w',')',0
+095D  FF 22 80 28 77 29 + 1375  	DB	$FF,$22,xLD,'(','w',')',',',xHL,0
+0966  FF F9 80 8D 2C 83 + 1376  	DB	$FF,$F9,xLD,xSP,',',xHL,0
+096D  FF F5 8E 20 90 00   1377  	DB	$FF,$F5,xPUSH,' ',xAF,0
+0973  CF C5 8E 20 70 00   1378  	DB	$CF,$C5,xPUSH,' ','p',0
+0979  FF F1 8F 90 00      1379  	DB	$FF,$F1,xPOP,xAF,0
+097E  CF C1 8F 70 00      1380  	DB	$CF,$C1,xPOP,'p',0
+0983  FF EB 91 20 82 2C + 1381  	DB	$FF,$EB,xEX,' ',xDE,',',xHL,0
+098B  FF 08 91 20 90 2C + 1382  	DB	$FF,$08,xEX,' ',xAF,',',xAF,$27,0
+0994  FF D9 91 58 00      1383  	DB	$FF,$D9,xEX,'X',0
+0999  FF E3 91 20 28 8D + 1384  	DB	$FF,$E3,xEX,' ','(',xSP,')',',',xHL,0
+09A3  F8 80 94 8B 73 00   1385  	DB	$F8,$80,xADD,xACM,'s',0
+09A9  FF C6 94 8B 62 00   1386  	DB	$FF,$C6,xADD,xACM,'b',0
+09AF  F8 88 95 8B 73 00   1387  	DB	$F8,$88,xADC,xACM,'s',0
+09B5  FF CE 95 8B 62 00   1388  	DB	$FF,$CE,xADC,xACM,'b',0
+09BB  F8 90 96 8B 73 00   1389  	DB	$F8,$90,xSUB,xACM,'s',0
+09C1  FF D6 96 8B 62 00   1390  	DB	$FF,$D6,xSUB,xACM,'b',0
+09C7  F8 98 97 8B 73 00   1391  	DB	$F8,$98,xSBC,xACM,'s',0
+09CD  FF DE 97 8B 62 00   1392  	DB	$FF,$DE,xSBC,xACM,'b',0
+09D3  F8 A0 98 8B 73 00   1393  	DB	$F8,$A0,xAND,xACM,'s',0
+09D9  FF E6 98 8B 62 00   1394  	DB	$FF,$E6,xAND,xACM,'b',0
+09DF  F8 A8 9A 8B 73 00   1395  	DB	$F8,$A8,xXOR,xACM,'s',0
+09E5  FF EE 9A 8B 62 00   1396  	DB	$FF,$EE,xXOR,xACM,'b',0
+09EB  F8 B0 99 8B 73 00   1397  	DB	$F8,$B0,xOR,xACM,'s',0
+09F1  FF F6 99 8B 62 00   1398  	DB	$FF,$F6,xOR,xACM,'b',0
+09F7  F8 B8 93 20 8B 73 + 1399  	DB	$F8,$B8,xCP,' ',xACM,'s',0
+09FE  FF FE 93 20 8B 62 + 1400  	DB	$FF,$FE,xCP,' ',xACM,'b',0
+0A05  C7 04 9B 64 00      1401  	DB	$C7,$04,xINC,'d',0
+0A0A  C7 05 9C 64 00      1402  	DB	$C7,$05,xDEC,'d',0
+0A0F  CF 09 94 83 2C 70 + 1403  	DB	$CF,$09,xADD,xHL,',','p',0
+0A16  FF 27 44 41 41 00   1404  	DB	$FF,$27,'D','A','A',0
+0A1C  FF 2F 93 4C 00      1405  	DB	$FF,$2F,xCP,'L',0
+0A21  FF 3F 43 43 46 00   1406  	DB	$FF,$3F,'C','C','F',0
+0A27  FF 37 53 43 46 00   1407  	DB	$FF,$37,'S','C','F',0
+0A2D  FF 00 4E 4F 50 00   1408  	DB	$FF,$00,'N','O','P',0
+0A33  FF F3 44 49 00      1409  	DB	$FF,$F3,'D','I',0
+0A38  FF FB 45 49 00      1410  	DB	$FF,$FB,'E','I',0
+0A3D  CF 03 9B 70 00      1411  	DB	$CF,$03,xINC,'p',0
+0A42  CF 0B 9C 70 00      1412  	DB	$CF,$0B,xDEC,'p',0
+0A47  FF 07 9D 43 41 00   1413  	DB	$FF,$07,xRL,'C','A',0
+0A4D  FF 17 9D 41 00      1414  	DB	$FF,$17,xRL,'A',0
+0A52  FF 0F 9E 43 41 00   1415  	DB	$FF,$0F,xRR,'C','A',0
+0A58  FF 1F 9E 41 00      1416  	DB	$FF,$1F,xRR,'A',0
+0A5D  FF C3 9F 77 00      1417  	DB	$FF,$C3,xJP,'w',0
+0A62  C7 C2 9F 63 2C 77 + 1418  	DB	$C7,$C2,xJP,'c',',','w',0
+0A69  FF 18 A0 72 00      1419  	DB	$FF,$18,xJR,'r',0
+0A6E  FF 38 A0 43 2C 72 + 1420  	DB	$FF,$38,xJR,'C',',','r',0
+0A75  FF 30 A0 4E 43 2C + 1421  	DB	$FF,$30,xJR,'N','C',',','r',0
+0A7D  FF 28 A0 5A 2C 72 + 1422  	DB	$FF,$28,xJR,'Z',',','r',0
+0A84  FF 20 A0 4E 5A 2C + 1423  	DB	$FF,$20,xJR,'N','Z',',','r',0
+0A8C  FF E9 9F 88 00      1424  	DB	$FF,$E9,xJP,xHLI,0
+0A91  FF 10 44 4A 4E 5A + 1425  	DB	$FF,$10,'D','J','N','Z',' ','r',0
+DUNFIELD Z80 ASSEMBLER:                                               PAGE: 26
+
+0A9A  FF CD A1 20 77 00   1426  	DB	$FF,$CD,xCALL,' ','w',0
+0AA0  C7 C4 A1 20 63 2C + 1427  	DB	$C7,$C4,xCALL,' ','c',',','w',0
+0AA8  FF C9 A2 00         1428  	DB	$FF,$C9,xRET,0
+0AAC  C7 C0 A2 20 63 00   1429  	DB	$C7,$C0,xRET,' ','c',0
+0AB2  C7 C7 52 53 54 20 + 1430  	DB	$C7,$C7,'R','S','T',' ','n',0
+0ABA  FF DB A3 20 8B 28 + 1431  	DB	$FF,$DB,xIN,' ',xACM,'(','b',')',0
+0AC3  FF D3 A4 20 28 62 + 1432  	DB	$FF,$D3,xOUT,' ','(','b',')',xCMA,0
+0ACC  00 3F 00            1433  	DB	0,'?',0
+0ACF                      1434  * -- CB prefix opcode table
+0ACF  F8 00 9D 43 20 73 + 1435  DTABCB	DB	$F8,$00,xRL,'C',' ','s',0
+0AD6  F8 10 9D 20 73 00   1436  	DB	$F8,$10,xRL,' ','s',0
+0ADC  F8 08 9E 43 20 73 + 1437  	DB	$F8,$08,xRR,'C',' ','s',0
+0AE3  F8 18 9E 20 73 00   1438  	DB	$F8,$18,xRR,' ','s',0
+0AE9  F8 20 53 4C 41 20 + 1439  	DB	$F8,$20,'S','L','A',' ','s',0
+0AF1  F8 28 53 52 41 20 + 1440  	DB	$F8,$28,'S','R','A',' ','s',0
+0AF9  F8 38 53 52 4C 20 + 1441  	DB	$F8,$38,'S','R','L',' ','s',0
+0B01  C0 40 A5 6E 2C 73 + 1442  	DB	$C0,$40,xBIT,'n',',','s',0
+0B08  C0 C0 A6 6E 2C 73 + 1443  	DB	$C0,$C0,xSET,'n',',','s',0
+0B0F  C0 80 A7 6E 2C 73 + 1444  	DB	$C0,$80,xRES,'n',',','s',0
+0B16  00 3F 00            1445  	DB	0,'?',0
+0B19                      1446  * -- DD prefix opcode table
+0B19  C7 46 80 64 2C 89 + 1447  DTABDD	DB	$C7,$46,xLD,'d',',',xIXI,'b',')',0
+0B22  F8 70 80 89 62 29 + 1448  	DB	$F8,$70,xLD,xIXI,'b',')',',','s',0
+0B2B  FF 36 80 89 62 29 + 1449  	DB	$FF,$36,xLD,xIXI,'b',')',',','b',0
+0B34  FF 21 80 84 2C 77 + 1450  	DB	$FF,$21,xLD,xIX,',','w',0
+0B3B  FF 2A 80 84 2C 28 + 1451  	DB	$FF,$2A,xLD,xIX,',','(','w',')',0
+0B44  FF 22 80 28 77 29 + 1452  	DB	$FF,$22,xLD,'(','w',')',',',xIX,0
+0B4D  FF F9 80 8D 2C 84 + 1453  	DB	$FF,$F9,xLD,xSP,',',xIX,0
+0B54  FF E5 8E 20 84 00   1454  	DB	$FF,$E5,xPUSH,' ',xIX,0
+0B5A  FF E1 8F 84 00      1455  	DB	$FF,$E1,xPOP,xIX,0
+0B5F  FF E3 91 20 28 8D + 1456  	DB	$FF,$E3,xEX,' ','(',xSP,')',',',xIX,0
+0B69  FF 86 94 8B 89 62 + 1457  	DB	$FF,$86,xADD,xACM,xIXI,'b',')',0
+0B71  FF 8E 95 8B 89 62 + 1458  	DB	$FF,$8E,xADC,xACM,xIXI,'b',')',0
+0B79  FF 96 96 8B 89 62 + 1459  	DB	$FF,$96,xSUB,xACM,xIXI,'b',')',0
+0B81  FF 9E 97 8B 89 62 + 1460  	DB	$FF,$9E,xSBC,xACM,xIXI,'b',')',0
+0B89  FF A6 98 8B 89 62 + 1461  	DB	$FF,$A6,xAND,xACM,xIXI,'b',')',0
+0B91  FF AE 9A 8B 89 62 + 1462  	DB	$FF,$AE,xXOR,xACM,xIXI,'b',')',0
+0B99  FF B6 99 8B 89 62 + 1463  	DB	$FF,$B6,xOR,xACM,xIXI,'b',')',0
+0BA1  FF BE 93 20 8B 89 + 1464  	DB	$FF,$BE,xCP,' ',xACM,xIXI,'b',')',0
+0BAA  FF 34 9B 89 62 29 + 1465  	DB	$FF,$34,xINC,xIXI,'b',')',0
+0BB1  FF 35 9C 89 62 29 + 1466  	DB	$FF,$35,xDEC,xIXI,'b',')',0
+0BB8  CF 09 94 84 2C 78 + 1467  	DB	$CF,$09,xADD,xIX,',','x',0
+0BBF  FF 23 9B 84 00      1468  	DB	$FF,$23,xINC,xIX,0
+0BC4  FF 2B 9C 84 00      1469  	DB	$FF,$2B,xDEC,xIX,0
+0BC9  FF E9 9F 89 00      1470  	DB	$FF,$E9,xJP,xIXI,0
+0BCE  FF CB 7A FF 06 9D + 1471  	DB	$FF,$CB,'z',$FF,$06,xRL,'C',' ',xIXI,'v',')',0
+0BDA  FF CB 7A FF 16 9E + 1472  	DB	$FF,$CB,'z',$FF,$16,xRR,'C',' ',xIXI,'v',')',0
+0BE6  FF CB 7A C7 46 A5 + 1473  	DB	$FF,$CB,'z',$C7,$46,xBIT,'n',',',xIXI,'v',')',0
+0BF2  FF CB 7A C7 C6 A6 + 1474  	DB	$FF,$CB,'z',$C7,$C6,xSET,'n',',',xIXI,'v',')',0
+0BFE  FF CB 7A C7 86 A7 + 1475  	DB	$FF,$CB,'z',$C7,$86,xRES,'n',',',xIXI,'v',')',0
+0C0A  00 3F 00            1476  	DB	0,'?',0
+0C0D                      1477  * -- FD prefix opcode table
+0C0D  C7 46 80 64 2C 8A + 1478  DTABFD	DB	$C7,$46,xLD,'d',',',xIYI,'b',')',0
+0C16  F8 70 80 8A 62 29 + 1479  	DB	$F8,$70,xLD,xIYI,'b',')',',','s',0
+0C1F  FF 36 80 8A 62 29 + 1480  	DB	$FF,$36,xLD,xIYI,'b',')',',','b',0
+0C28  FF 21 80 85 2C 77 + 1481  	DB	$FF,$21,xLD,xIY,',','w',0
+0C2F  FF 2A 80 85 2C 28 + 1482  	DB	$FF,$2A,xLD,xIY,',','(','w',')',0
+DUNFIELD Z80 ASSEMBLER:                                               PAGE: 27
+
+0C38  FF 22 80 28 77 29 + 1483  	DB	$FF,$22,xLD,'(','w',')',',',xIY,0
+0C41  FF F9 80 8D 2C 85 + 1484  	DB	$FF,$F9,xLD,xSP,',',xIY,0
+0C48  FF E5 8E 20 85 00   1485  	DB	$FF,$E5,xPUSH,' ',xIY,0
+0C4E  FF E1 8F 85 00      1486  	DB	$FF,$E1,xPOP,xIY,0
+0C53  FF E3 91 20 28 8D + 1487  	DB	$FF,$E3,xEX,' ','(',xSP,')',',',xIY,0
+0C5D  FF 86 94 8B 8A 62 + 1488  	DB	$FF,$86,xADD,xACM,xIYI,'b',')',0
+0C65  FF 8E 95 8B 8A 62 + 1489  	DB	$FF,$8E,xADC,xACM,xIYI,'b',')',0
+0C6D  FF 96 96 8B 8A 62 + 1490  	DB	$FF,$96,xSUB,xACM,xIYI,'b',')',0
+0C75  FF 9E 97 8B 8A 62 + 1491  	DB	$FF,$9E,xSBC,xACM,xIYI,'b',')',0
+0C7D  FF A6 98 8B 8A 62 + 1492  	DB	$FF,$A6,xAND,xACM,xIYI,'b',')',0
+0C85  FF AE 9A 8B 8A 62 + 1493  	DB	$FF,$AE,xXOR,xACM,xIYI,'b',')',0
+0C8D  FF B6 99 8B 8A 62 + 1494  	DB	$FF,$B6,xOR,xACM,xIYI,'b',')',0
+0C95  FF BE 93 20 8B 8A + 1495  	DB	$FF,$BE,xCP,' ',xACM,xIYI,'b',')',0
+0C9E  FF 34 9B 8A 62 29 + 1496  	DB	$FF,$34,xINC,xIYI,'b',')',0
+0CA5  FF 35 9C 8A 62 29 + 1497  	DB	$FF,$35,xDEC,xIYI,'b',')',0
+0CAC  CF 09 94 85 2C 79 + 1498  	DB	$CF,$09,xADD,xIY,',','y',0
+0CB3  FF 23 9B 85 00      1499  	DB	$FF,$23,xINC,xIY,0
+0CB8  FF 2B 9C 85 00      1500  	DB	$FF,$2B,xDEC,xIY,0
+0CBD  FF E9 9F 8A 00      1501  	DB	$FF,$E9,xJP,xIYI,0
+0CC2  FF CB 7A FF 06 9D + 1502  	DB	$FF,$CB,'z',$FF,$06,xRL,'C',' ',xIYI,'v',')',0
+0CCE  FF CB 7A FF 16 9E + 1503  	DB	$FF,$CB,'z',$FF,$16,xRR,'C',' ',xIYI,'v',')',0
+0CDA  FF CB 7A C7 46 A5 + 1504  	DB	$FF,$CB,'z',$C7,$46,xBIT,'n',',',xIYI,'v',')',0
+0CE6  FF CB 7A C7 C6 A6 + 1505  	DB	$FF,$CB,'z',$C7,$C6,xSET,'n',',',xIYI,'v',')',0
+0CF2  FF CB 7A C7 86 A7 + 1506  	DB	$FF,$CB,'z',$C7,$86,xRES,'n',',',xIYI,'v',')',0
+0CFE  00 3F 00            1507  	DB	0,'?',0
+0D01                      1508  * -- ED prefix opcode table
+0D01  FF 57 80 8B 49 00   1509  DTABED	DB	$FF,$57,xLD,xACM,'I',0
+0D07  FF 5F 80 8B 52 00   1510  	DB	$FF,$5F,xLD,xACM,'R',0
+0D0D  FF 47 80 49 8C 00   1511  	DB	$FF,$47,xLD,'I',xCMA,0
+0D13  FF 4F 80 52 8C 00   1512  	DB	$FF,$4F,xLD,'R',xCMA,0
+0D19  CF 4B 80 70 28 77 + 1513  	DB	$CF,$4B,xLD,'p','(','w',')',0
+0D21  FF A0 92 49 00      1514  	DB	$FF,$A0,xLDx,'I',0
+0D26  FF B0 92 49 52 00   1515  	DB	$FF,$B0,xLDx,'I','R',0
+0D2C  FF A8 92 44 00      1516  	DB	$FF,$A8,xLDx,'D',0
+0D31  FF B8 92 44 52 00   1517  	DB	$FF,$B8,xLDx,'D','R',0
+0D37  FF A1 93 49 00      1518  	DB	$FF,$A1,xCP,'I',0
+0D3C  FF B1 93 49 52 00   1519  	DB	$FF,$B1,xCP,'I','R',0
+0D42  FF A9 93 44 00      1520  	DB	$FF,$A9,xCP,'D',0
+0D47  FF B9 93 44 52 00   1521  	DB	$FF,$B9,xCP,'D','R',0
+0D4D  FF 44 4E 45 47 00   1522  	DB	$FF,$44,'N','E','G',0
+0D53  FF 46 49 4D 20 30 + 1523  	DB	$FF,$46,'I','M',' ','0',0
+0D5A  FF 56 49 4D 20 31 + 1524  	DB	$FF,$56,'I','M',' ','1',0
+0D61  FF 5E 49 4D 20 32 + 1525  	DB	$FF,$5E,'I','M',' ','2',0
+0D68  CF 4A 95 83 2C 70 + 1526  	DB	$CF,$4A,xADC,xHL,',','p',0
+0D6F  CF 42 97 83 2C 70 + 1527  	DB	$CF,$42,xSBC,xHL,',','p',0
+0D76  FF 6F 9D 44 00      1528  	DB	$FF,$6F,xRL,'D',0
+0D7B  FF 67 9E 44 00      1529  	DB	$FF,$67,xRR,'D',0
+0D80  FF 4D A2 49 00      1530  	DB	$FF,$4D,xRET,'I',0
+0D85  FF 45 A2 4E 00      1531  	DB	$FF,$45,xRET,'N',0
+0D8A  C7 40 A3 20 64 2C + 1532  	DB	$C7,$40,xIN,' ','d',',','(','C',')',0
+0D94  FF A2 A3 49 00      1533  	DB	$FF,$A2,xIN,'I',0
+0D99  FF B2 A3 49 52 00   1534  	DB	$FF,$B2,xIN,'I','R',0
+0D9F  FF AA A3 44 00      1535  	DB	$FF,$AA,xIN,'D',0
+0DA4  FF BA A3 44 52 00   1536  	DB	$FF,$BA,xIN,'D','R',0
+0DAA  C7 41 A4 20 28 43 + 1537  	DB	$C7,$41,xOUT,' ','(','C',')',',','d',0
+0DB4  FF A3 A4 49 00      1538  	DB	$FF,$A3,xOUT,'I',0
+0DB9  FF B3 4F 54 49 52 + 1539  	DB	$FF,$B3,'O','T','I','R',0
+DUNFIELD Z80 ASSEMBLER:                                               PAGE: 28
+
+0DC0  FF AB A4 44 00      1540  	DB	$FF,$AB,xOUT,'D',0
+0DC5  FF BB 4F 54 44 52 + 1541  	DB	$FF,$BB,'O','T','D','R',0
+0DCC  00 3F 00            1542  	DB	0,'?',0
+0DCF                      1543  *
+0DCF                      1544  * Table of execution flow affecting opcodes and handlers
+0DCF                      1545  *
+0DCF  FF C3 8D 07         1546  EFTAB	DW	$C3FF,EXJP	;JP
+0DD3  C7 C2 88 07         1547  	DW	$C2C7,EXJPC	;JP C
+0DD7  FF 18 9B 07         1548  	DW	$18FF,EXJR	;JR
+0DDB  FF E9 75 07         1549  	DW	$E9FF,EXJPHL	;JP (HL)
+0DDF  FF CD B1 07         1550  	DW	$CDFF,EXCALL	;CALL
+0DE3  C7 C4 AC 07         1551  	DW	$C4C7,EXCALLC	;CALL C
+0DE7  FF C9 CF 07         1552  	DW	$C9FF,EXRET	;RET
+0DEB  C7 C0 CA 07         1553  	DW	$C0C7,EXRETC	;RET C
+0DEF  FF 10 92 07         1554  	DW	$10FF,EXDJNZ	;DJNZ
+0DF3  FF 38 7A 07         1555  	DW	$38FF,EXJRC	;JR C
+0DF7  FF 30 7E 07         1556  	DW	$30FF,EXJRNC	;JR NC
+0DFB  FF 28 82 07         1557  	DW	$28FF,EXJRZ	;JR Z
+0DFF  FF 20 86 07         1558  	DW	$20FF,EXJRNZ	;JR NZ
+0E03  C7 C7 6B 07         1559  	DW	$C7C7,EXRST	;RST
+0E07  FF DD 53 07         1560  	DW	$DDFF,EXDDP	;DD prefix: JP (IX)
+0E0B  FF FE 5F 07         1561  	DW	$FEFF,EXFDP	;FD prefix: JP (IY)
+0E0F                      1562  EFEND	EQU	*
+0E0F                      1563  *
+0E0F                      1564  * Help text
+0E0F                      1565  *
+0E0F  4D 4F 4E 5A 38 30 + 1566  HTEXT	STR	'MONZ80 Commands:'
+0E1F  0A 00               1567  	DB	$0A,0
+0E21  42 52 20 30 2D 37 + 1568  	STRZ	'BR 0-7 addr|Set breakpoint (0000 clears)'
+0E4A  44 42 7C 44 69 73 + 1569  	STRZ	'DB|Display breakpoints'
+0E61  44 49 20 66 72 6F + 1570  	STRZ	'DI from,[to]|Disassemble memory'
+0E81  44 4D 20 66 72 6F + 1571  	STRZ	'DM from,[to]|Dump memory (HEX/ASCII)'
+0EA6  44 52 7C 44 69 73 + 1572  	STRZ	'DR|Display Z80 registers'
+0EBF  45 20 61 64 64 72 + 1573  	STRZ	'E addr|Edit memory'
+0ED2  46 20 66 72 6F 6D + 1574  	STRZ	'F from,to value|Fill memory'
+0EEE  47 20 5B 61 64 64 + 1575  	STRZ	'G [addr]|Go (execute)'
+0F04  49 20 70 6F 72 74 + 1576  	STRZ	'I port|Read/Display I/O port'
+0F21  4C 7C 4C 6F 61 64 + 1577  	STRZ	'L|Load .HEX file'
+0F32  4F 20 70 6F 72 74 + 1578  	STRZ	'O port value|Write I/O port'
+0F4E  54 7C 54 72 61 63 + 1579  	STRZ	'T|Trace (single-step)'
+0F64  41 46 2C 42 43 2C + 1580  	STRZ	'AF,BC,DE,HL'
+0F70  49 58 2C 49 59 2C + 1581  	STRZ	'IX,IY,SP,PC value|Set register value'
+0F95  00                  1582  	DB	0
+0F96                      1583  *
+0F96                      1584  *------------ LOW LEVEL I/O FUNCTIONS -----------
+0F96                      1585  * Modified for UART at I/O port 80h (status/control) and 81h (data)
+0F96                      1586  *
+0F96                      1587  * Initialize I/O subsystem
+0F96                      1588  * (modified for VZ200 clone with a novel UART at 80h/81h)
+0F96  3E 03               1589  IOINIT	LD	A,3		; Insure not setup mode
+0F98  D3 80               1590      OUT	(80h),A		; Write once
+0F9A  D3 80               1591      OUT (80h),A		; write twice 
+0F9C  3E 77               1592      LD  A,%01110111	; Setup mode
+0F9E  D3 80               1593      OUT (80h),A		; write it
+0FA0  3E 15               1594      LD	A,$15		; 8 data, 1 stop, no parity, /16 clock, RTS high, ints off
+0FA2  D3 80               1595      OUT	(80h),A		; Write it
+0FA4  C9                  1596      RET
+DUNFIELD Z80 ASSEMBLER:                                               PAGE: 29
+
+0FA5                      1597  *
+0FA5                      1598  * Test for character from the console
+0FA5                      1599  *
+0FA5  DB 80               1600  TESTC	IN	A,(80h)	;Get status
+0FA7  E6 01               1601      AND	1		;RX ready
+0FA9  C8                  1602      RET	Z		;No, return zero
+0FAA  DB 81               1603      IN	A,(81h)		;Read data
+0FAC  C9                  1604      RET
+0FAD                      1605  *
+0FAD                      1606  * Write character to console
+0FAD                      1607  *
+0FAD  F5                  1608  PUTC	PUSH	AF		;Save PSW
+0FAE  DB 80               1609  putc1	IN	A,(80h)		;Read status
+0FB0  E6 02               1610      AND 2		;TX ready
+0FB2  28 FA               1611      JR	Z,putc1		;Not ready
+0FB4  F1                  1612      POP	AF		;Restore
+0FB5  D3 81               1613      OUT	(81h),A		;Write to data port
+0FB7  C9                  1613      RET	(81h),A		;Write to data port
