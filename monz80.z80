@@ -7,43 +7,78 @@
 ; Monitor data
 ; (modified for vz200 clone with a 68B50 UART at port $80, Z8D)
         
-;; This is David Dunfields MONZ80 ported to compile with zasm
-;; this code is (C) David Dunfield, see COPY.TXT
-;; while not open source it is free to use for non-commercial purposes
-;; you can find out more at: https://dunfield.themindfactory.com/
+; This is David Dunfields MONZ80 ported to compile with zasm
+; this code is (C) David Dunfield, see COPY.TXT
+; while not open source it is free to use for non-commercial purposes
+; you can find out more at: https://dunfield.themindfactory.com/
         
-;; port to zasm by: David Collins (Z8D)
+; port to zasm by: David Collins (Z8D)
+
+; this file port is simply a byte for byte conversion in syntax only from the
+; original ASMZ80.COM source code (not to be confused with asmz80 assembler)
+; ASMZ80.COM is a Z80 assembler for 16 bit DOS (compatible mostly with 32 bit
+; DOS) written by David Dunfield.  It is a very flexible, minimal assembler
+; however requires a VM to run under linux or modern Windows.  Additionally,
+; as David likes to build his own software, the code was likely written in a 
+; dos based editor with different tab and spacing preferances, as well as 
+; a number of 'DOS Peculiarities' which make the code hard to read in a 
+; modern editor such as VSCode or GitHub's rendering engine.  To that end,
+; the code was modified to update it for not only preservation, but also
+; so that it will assemble with zsam, which is a more modern Z80 cross
+; assembler.
+
+; Code was modified as follows from the original:
+
+; 01 - Replaced ORG statements for memory and ROM areas with SEGMENT directives
+; 02 - Converted string literals to DEFM statements with a terminator byte.
+; 03 - Updated DW directives to conform to ASMZ80's flexible syntax,
+;      replacing them with proper DB entries compatible with ZASM;
+;      the resulting table matches the original, so command handlers
+;      remain unchanged. (see comments in code for details)
+; 04 - Adjusted parameter assignments to registers using bit operations,
+;      ensuring compatibility with ZASM's syntax.
+; 05 - Changed immediate equates to use '$' instead of '*'.
+; 06 - Fixed case sensitivity issues between zasm and ASMZ80.
+; 07 - Applied one pass of z80asmformat in VSCode, which aligned most
+;      opcodes and parameters but introduced tabs and altered string
+;      literals, requiring further manual fixes.
+; 08 - Reformatted the file to use spaces instead of tabs for improved
+;      readability and GitHub display.
+; 09 - Aligned comments into a single column to improve readability.
+; 10 - Aligned opcodes to column 9 for consistency.
+; 11 - Replaced the UART driver with a 68B50 model, as used in my VZ200 clone.
+; 12 - Added a jump table (_BIOSCalls) for some of the useful routines 
+
+
+; To port to your memory map you need to change MCODE, MDATA and UCODE
+; entries below.
+ 
+; code segments:
         
-;; to port to your memory map you need to change MCODE, MDATA and UCODE
-;; entries below, any commented out EAQUATES or ORG statements, are
-;; replaced by proper segments.
+;    USTACK-the user stack (top of RAM)
+;    UCODE-the user code area (where the user program is loaded)
+;    MDATA-the monitor data area (where the monitor variables are stored)
+;    MCODE-the monitor code
+;    _u68B50-the 68B50 UART driver (found at bottom of this file)
+;    _BIOSCalls crappy little jump table for bios calls.
         
-;; code segments:
-        
-;;    USTACK-the user stack (top of RAM)
-;;    UCODE-the user code area (where the user program is loaded)
-;;    MDATA-the monitor data area (where the monitor variables are stored)
-;;    MCODE-the monitor code
-;;    _u68B50-the 68B50 UART driver (found at bottom of this file)
-        
-        
-;; zasm preproc:
+; zasm preproc:
 #charset ascii
 #target rom
         
-;; precalc size of table for single steps
+; precalc size of table for single steps
 EFSIZE  EQU (EFEND-EFTAB) / 4
         
-;; top of stack (without window for banking)
+; top of stack (without window for banking)
 #data USTACK, $FFFF       ;user stack address (top of RAM)
         
-;; user code area is here, below is the ROM Start address.
+; user code area is here, below is the ROM Start address.
 #data UCODE, $7860        ;user code area starts here and runs into the stack
         
-;; monitor data area is here
+; monitor data area is here
 #data MDATA, $7800, $60   ;monitor requires 60 bytes of ram for variable
         
-;; User registers (saved while monitor active)
+; User registers (saved while monitor active)
 uAF     DS 2              ;User AF register
 uBC     DS 2              ;User BC register
 uDE     DS 2              ;User DE register
@@ -53,7 +88,7 @@ uIY     DS 2              ;User IY register
 uPC     DS 2              ;User PC register
 uSP     DS 2              ;User SP register
         
-;; I/O control byte:
+; I/O control byte:
         
 ;  7/80 = Output paused
 ;  6/40 = Echo input
@@ -109,7 +144,7 @@ BRKP1   PUSH AF           ;Get AF
         LD (uIX), IX      ;Save IX
         LD (uIY), IY      ;Save IY
         
-;; Remove any active breakpoints
+; Remove any active breakpoints
         
         LD HL, BRKTAB     ;Point to breakpoint table
         LD B, 8           ;Total of 8 breakpoints
@@ -127,7 +162,7 @@ rembrk2 INC HL            ;Skip to next
         CALL RDUMP        ;Display registers
         JR ENTMON         ;Enter monitor
         
-;; Cold start entry point
+; Cold start entry point
         
 BEGIN   LD SP, MONSTK     ;Set initial stack
         CALL IOINIT       ;Initialize I/O
@@ -153,7 +188,7 @@ begin1  LD (HL), 0        ;Zero 1 byte
         LD HL, USTACK     ;Get default SP
         LD (uSP), HL      ;Set it
         
-;; Warm-start of monitor
+; Warm-start of monitor
 ENTMON  LD SP, MONSTK     ;Reset SP
         LD A, %01100000   ;Echo, Ucase
         LD (IOCTL), A     ;Set I/O control
@@ -217,28 +252,28 @@ clrse1  CALL TESTC        ;Wait for input
         JR NZ, clrse1     ;Wait for expiry
         JR ENTMON         ;Re-enter monitor
         
-;; This bit was frustrating:
-;; Firstly, David's ASMZ80 assembler suopports very flexible DW directives,
-;; which essentally allow you to define a 2 byte ASCII string as a single
-;; word, however the storage format is little-endian, so the string
-;; 'MD' is stored as $44,$4D, which is the reverse of what happens useing DB.
-;; furthermore, you can string together multiple words like this:
+; This bit was frustrating:
+; Firstly, David's ASMZ80 assembler suopports very flexible DW directives,
+; which essentally allow you to define a 2 byte ASCII string as a single
+; word, however the storage format is little-endian, so the string
+; 'MD' is stored as $44,$4D, which is the reverse of what happens useing DB.
+; furthermore, you can string together multiple words like this:
         
-;;        DW    'DM',DUMP    ;Dump memory
+;        DW    'DM',DUMP    ;Dump memory
         
-;; whereas ZASM does not support this, so we have to use a different format completely.
+; whereas ZASM does not support this, so we have to use a different format completely.
         
-;; Secondly the 1 byte commands are stored as if the first byte is the MSB and the 0 is
-;; the LSB, so 'E' is stored as $45,0 so we have to pad a 0 byte to the end of the command.
+; Secondly the 1 byte commands are stored as if the first byte is the MSB and the 0 is
+; the LSB, so 'E' is stored as $45,0 so we have to pad a 0 byte to the end of the command.
         
-;; Lastly, the jump vector is stored as a 2 byte address, so we have to use the DW directive
-;; which store as a 2 byte little-endian value (the usual way).
+; Lastly, the jump vector is stored as a 2 byte address, so we have to use the DW directive
+; which store as a 2 byte little-endian value (the usual way).
         
-;; this alignment produces a table which is identical to the original, so the command
-;; handlers can be used without modification.  However unfortunately the code is considerably
-;; less self documenting -- thus the need of this large comment block.
+; this alignment produces a table which is identical to the original, so the command
+; handlers can be used without modification.  However unfortunately the code is considerably
+; less self documenting -- thus the need of this large comment block.
         
-;; any qustions about this, I can elaborate -- David Collins (Z8D)
+; any qustions about this, I can elaborate -- David Collins (Z8D)
         
 ; Command handler table
 CTABLE: DB   'M','D'      ;Dump memory
@@ -1681,7 +1716,7 @@ IOINIT  LD A, 3           ;Insure not setup mode (some second source requires th
         OUT (80h), A      ;write twice
         LD A, %01110111   ;Setup mode
         OUT (80h), A      ;write it
-;; actually, set the UART to its operational mode for the VZ200 Clone
+; actually, set the UART to its operational mode for the VZ200 Clone
         LD A, $15         ;8 data, 1 stop, no parity, /16 clock, RTS high, ints off
         OUT (80h), A      ;Write it
         RET

@@ -1,6 +1,6 @@
                         ; --------------------------------------
                         ; zasm: assemble "monz80.z80"
-                        ; date: 2025-07-08 15:13:03
+                        ; date: 2025-07-08 15:27:54
                         ; --------------------------------------
 
 
@@ -13,43 +13,78 @@
                         ; Monitor data
                         ; (modified for vz200 clone with a 68B50 UART at port $80, Z8D)
                                 
-                        ;; This is David Dunfields MONZ80 ported to compile with zasm
-                        ;; this code is (C) David Dunfield, see COPY.TXT
-                        ;; while not open source it is free to use for non-commercial purposes
-                        ;; you can find out more at: https://dunfield.themindfactory.com/
+                        ; This is David Dunfields MONZ80 ported to compile with zasm
+                        ; this code is (C) David Dunfield, see COPY.TXT
+                        ; while not open source it is free to use for non-commercial purposes
+                        ; you can find out more at: https://dunfield.themindfactory.com/
                                 
-                        ;; port to zasm by: David Collins (Z8D)
+                        ; port to zasm by: David Collins (Z8D)
+                        
+                        ; this file port is simply a byte for byte conversion in syntax only from the
+                        ; original ASMZ80.COM source code (not to be confused with asmz80 assembler)
+                        ; ASMZ80.COM is a Z80 assembler for 16 bit DOS (compatible mostly with 32 bit
+                        ; DOS) written by David Dunfield.  It is a very flexible, minimal assembler
+                        ; however requires a VM to run under linux or modern Windows.  Additionally,
+                        ; as David likes to build his own software, the code was likely written in a 
+                        ; dos based editor with different tab and spacing preferances, as well as 
+                        ; a number of 'DOS Peculiarities' which make the code hard to read in a 
+                        ; modern editor such as VSCode or GitHub's rendering engine.  To that end,
+                        ; the code was modified to update it for not only preservation, but also
+                        ; so that it will assemble with zsam, which is a more modern Z80 cross
+                        ; assembler.
+                        
+                        ; Code was modified as follows from the original:
+                        
+                        ; 01 - Replaced ORG statements for memory and ROM areas with SEGMENT directives
+                        ; 02 - Converted string literals to DEFM statements with a terminator byte.
+                        ; 03 - Updated DW directives to conform to ASMZ80's flexible syntax,
+                        ;      replacing them with proper DB entries compatible with ZASM;
+                        ;      the resulting table matches the original, so command handlers
+                        ;      remain unchanged. (see comments in code for details)
+                        ; 04 - Adjusted parameter assignments to registers using bit operations,
+                        ;      ensuring compatibility with ZASM's syntax.
+                        ; 05 - Changed immediate equates to use '$' instead of '*'.
+                        ; 06 - Fixed case sensitivity issues between zasm and ASMZ80.
+                        ; 07 - Applied one pass of z80asmformat in VSCode, which aligned most
+                        ;      opcodes and parameters but introduced tabs and altered string
+                        ;      literals, requiring further manual fixes.
+                        ; 08 - Reformatted the file to use spaces instead of tabs for improved
+                        ;      readability and GitHub display.
+                        ; 09 - Aligned comments into a single column to improve readability.
+                        ; 10 - Aligned opcodes to column 9 for consistency.
+                        ; 11 - Replaced the UART driver with a 68B50 model, as used in my VZ200 clone.
+                        ; 12 - Added a jump table (_BIOSCalls) for some of the useful routines 
+                        
+                        
+                        ; To port to your memory map you need to change MCODE, MDATA and UCODE
+                        ; entries below.
+                         
+                        ; code segments:
                                 
-                        ;; to port to your memory map you need to change MCODE, MDATA and UCODE
-                        ;; entries below, any commented out EAQUATES or ORG statements, are
-                        ;; replaced by proper segments.
+                        ;    USTACK-the user stack (top of RAM)
+                        ;    UCODE-the user code area (where the user program is loaded)
+                        ;    MDATA-the monitor data area (where the monitor variables are stored)
+                        ;    MCODE-the monitor code
+                        ;    _u68B50-the 68B50 UART driver (found at bottom of this file)
+                        ;    _BIOSCalls crappy little jump table for bios calls.
                                 
-                        ;; code segments:
-                                
-                        ;;    USTACK-the user stack (top of RAM)
-                        ;;    UCODE-the user code area (where the user program is loaded)
-                        ;;    MDATA-the monitor data area (where the monitor variables are stored)
-                        ;;    MCODE-the monitor code
-                        ;;    _u68B50-the 68B50 UART driver (found at bottom of this file)
-                                
-                                
-                        ;; zasm preproc:
+                        ; zasm preproc:
                         #charset ascii
                         #target rom
                                 
-                        ;; precalc size of table for single steps
+                        ; precalc size of table for single steps
 0010:                   EFSIZE  EQU (EFEND-EFTAB) / 4
                                 
-                        ;; top of stack (without window for banking)
+                        ; top of stack (without window for banking)
 FFFF:                   #data USTACK, $FFFF       ;user stack address (top of RAM)
                                 
-                        ;; user code area is here, below is the ROM Start address.
+                        ; user code area is here, below is the ROM Start address.
 7860:                   #data UCODE, $7860        ;user code area starts here and runs into the stack
                                 
-                        ;; monitor data area is here
+                        ; monitor data area is here
 7800:                   #data MDATA, $7800, $60   ;monitor requires 60 bytes of ram for variable
                                 
-                        ;; User registers (saved while monitor active)
+                        ; User registers (saved while monitor active)
 7800: 0000              uAF     DS 2              ;User AF register
 7802: 0000              uBC     DS 2              ;User BC register
 7804: 0000              uDE     DS 2              ;User DE register
@@ -59,7 +94,7 @@ FFFF:                   #data USTACK, $FFFF       ;user stack address (top of RA
 780C: 0000              uPC     DS 2              ;User PC register
 780E: 0000              uSP     DS 2              ;User SP register
                                 
-                        ;; I/O control byte:
+                        ; I/O control byte:
                                 
                         ;  7/80 = Output paused
                         ;  6/40 = Echo input
@@ -117,7 +152,7 @@ FFFF:                   #data USTACK, $FFFF       ;user stack address (top of RA
 0055: DD220878 [138]            LD (uIX), IX      ;Save IX
 0059: FD220A78 [158]            LD (uIY), IY      ;Save IY
                                 
-                        ;; Remove any active breakpoints
+                        ; Remove any active breakpoints
                                 
 005D: 211178   [168]            LD HL, BRKTAB     ;Point to breakpoint table
 0060: 0608     [175]            LD B, 8           ;Total of 8 breakpoints
@@ -135,7 +170,7 @@ FFFF:                   #data USTACK, $FFFF       ;user stack address (top of RA
 006F: CD8F02   [31]             CALL RDUMP        ;Display registers
 0072: 1873     [43]             JR ENTMON         ;Enter monitor
                                 
-                        ;; Cold start entry point
+                        ; Cold start entry point
                                 
 0074: 315F78   [10]     BEGIN   LD SP, MONSTK     ;Set initial stack
 0077: CD960F   [27]             CALL IOINIT       ;Initialize I/O
@@ -177,7 +212,7 @@ FFFF:                   #data USTACK, $FFFF       ;user stack address (top of RA
 00E1: 21FFFF   [93]             LD HL, USTACK     ;Get default SP
 00E4: 220E78   [109]            LD (uSP), HL      ;Set it
                                 
-                        ;; Warm-start of monitor
+                        ; Warm-start of monitor
 00E7: 315F78   [10]     ENTMON  LD SP, MONSTK     ;Reset SP
 00EA: 3E60     [17]             LD A, %01100000   ;Echo, Ucase
 00EC: 321078   [30]             LD (IOCTL), A     ;Set I/O control
@@ -241,28 +276,28 @@ FFFF:                   #data USTACK, $FFFF       ;user stack address (top of RA
 0142: 20F5     [49|54]          JR NZ, clrse1     ;Wait for expiry
 0144: 18A1     [61]             JR ENTMON         ;Re-enter monitor
                                 
-                        ;; This bit was frustrating:
-                        ;; Firstly, David's ASMZ80 assembler suopports very flexible DW directives,
-                        ;; which essentally allow you to define a 2 byte ASCII string as a single
-                        ;; word, however the storage format is little-endian, so the string
-                        ;; 'MD' is stored as $44,$4D, which is the reverse of what happens useing DB.
-                        ;; furthermore, you can string together multiple words like this:
+                        ; This bit was frustrating:
+                        ; Firstly, David's ASMZ80 assembler suopports very flexible DW directives,
+                        ; which essentally allow you to define a 2 byte ASCII string as a single
+                        ; word, however the storage format is little-endian, so the string
+                        ; 'MD' is stored as $44,$4D, which is the reverse of what happens useing DB.
+                        ; furthermore, you can string together multiple words like this:
                                 
-                        ;;        DW    'DM',DUMP    ;Dump memory
+                        ;        DW    'DM',DUMP    ;Dump memory
                                 
-                        ;; whereas ZASM does not support this, so we have to use a different format completely.
+                        ; whereas ZASM does not support this, so we have to use a different format completely.
                                 
-                        ;; Secondly the 1 byte commands are stored as if the first byte is the MSB and the 0 is
-                        ;; the LSB, so 'E' is stored as $45,0 so we have to pad a 0 byte to the end of the command.
+                        ; Secondly the 1 byte commands are stored as if the first byte is the MSB and the 0 is
+                        ; the LSB, so 'E' is stored as $45,0 so we have to pad a 0 byte to the end of the command.
                                 
-                        ;; Lastly, the jump vector is stored as a 2 byte address, so we have to use the DW directive
-                        ;; which store as a 2 byte little-endian value (the usual way).
+                        ; Lastly, the jump vector is stored as a 2 byte address, so we have to use the DW directive
+                        ; which store as a 2 byte little-endian value (the usual way).
                                 
-                        ;; this alignment produces a table which is identical to the original, so the command
-                        ;; handlers can be used without modification.  However unfortunately the code is considerably
-                        ;; less self documenting -- thus the need of this large comment block.
+                        ; this alignment produces a table which is identical to the original, so the command
+                        ; handlers can be used without modification.  However unfortunately the code is considerably
+                        ; less self documenting -- thus the need of this large comment block.
                                 
-                        ;; any qustions about this, I can elaborate -- David Collins (Z8D)
+                        ; any qustions about this, I can elaborate -- David Collins (Z8D)
                                 
                         ; Command handler table
 0146: 4D44              CTABLE: DB   'M','D'      ;Dump memory
@@ -1996,7 +2031,7 @@ FFFF:                   #data USTACK, $FFFF       ;user stack address (top of RA
 0F9A: D380     [29]             OUT (80h), A      ;write twice
 0F9C: 3E77     [36]             LD A, %01110111   ;Setup mode
 0F9E: D380     [47]             OUT (80h), A      ;write it
-                        ;; actually, set the UART to its operational mode for the VZ200 Clone
+                        ; actually, set the UART to its operational mode for the VZ200 Clone
 0FA0: 3E15     [54]             LD A, $15         ;8 data, 1 stop, no parity, /16 clock, RTS high, ints off
 0FA2: D380     [65]             OUT (80h), A      ;Write it
 0FA4: C9       [75]             RET
@@ -2041,264 +2076,264 @@ FFFF:                   #data USTACK, $FFFF       ;user stack address (top of RA
 
 ; +++ global symbols +++
 
-BDUMP           = $0366 =   870  MCODE      monz80.z80:551
-BEGIN           = $0074 =   116  MCODE      monz80.z80:132
-BRKP1           = $0040 =    64  MCODE      monz80.z80:98 (unused)
-BRKPT           = $0038 =    56  MCODE      monz80.z80:94 (unused)
-BRKTAB          = $7811 = 30737  MDATA      monz80.z80:64
-BUFFER          = $782D = 30765  MDATA      monz80.z80:68
-CAF             = $02CD =   717  MCODE      monz80.z80:465
-CBC             = $02D2 =   722  MCODE      monz80.z80:467
-CCTAB           = $0850 =  2128  MCODE      monz80.z80:1347
-CDE             = $02D7 =   727  MCODE      monz80.z80:469
-CHL             = $02DC =   732  MCODE      monz80.z80:471
-CHLDE           = $0255 =   597  MCODE      monz80.z80:398
-CHREG           = $02F3 =   755  MCODE      monz80.z80:481
-CIX             = $02E1 =   737  MCODE      monz80.z80:473
-CIY             = $02E6 =   742  MCODE      monz80.z80:475
-CLRSER          = $0136 =   310  MCODE      monz80.z80:210
-CMDRET          = $012F =   303  MCODE      monz80.z80:206
-CPC             = $02EB =   747  MCODE      monz80.z80:477
-CSP             = $02F0 =   752  MCODE      monz80.z80:479
-CTABLE          = $0146 =   326  MCODE      monz80.z80:244
-DISASM          = $0519 =  1305  MCODE      monz80.z80:848
-DISCMD          = $020D =   525  MCODE      monz80.z80:359
-DLEOF           = $042F =  1071  MCODE      monz80.z80:678
-DLERR           = $0431 =  1073  MCODE      monz80.z80:681
-DLINT           = $0406 =  1030  MCODE      monz80.z80:650
-DLINT1          = $041F =  1055  MCODE      monz80.z80:666
-DLMOT           = $03D3 =   979  MCODE      monz80.z80:618 (unused)
-DLREC           = $03C8 =   968  MCODE      monz80.z80:612
-DMOT1           = $03F5 =  1013  MCODE      monz80.z80:637
-DTAB            = $0910 =  2320  MCODE      monz80.z80:1452
-DTABCB          = $0ACF =  2767  MCODE      monz80.z80:1523
-DTABDD          = $0B19 =  2841  MCODE      monz80.z80:1535
-DTABED          = $0D01 =  3329  MCODE      monz80.z80:1597
-DTABFD          = $0C0D =  3085  MCODE      monz80.z80:1566
-DUMP            = $021E =   542  MCODE      monz80.z80:369
-EDIT            = $030A =   778  MCODE      monz80.z80:500
-EFEND           = $0E0F =  3599  MCODE      monz80.z80:1650
-EFSIZE          = $0010 =    16             monz80.z80:35
-EFTAB           = $0DCF =  3535  MCODE      monz80.z80:1634
-ENTMON          = $00E7 =   231  MCODE      monz80.z80:157
-ERROR           = $0129 =   297  MCODE      monz80.z80:204
-EXCALL          = $07B1 =  1969  MCODE      monz80.z80:1272
-EXCALLC         = $07AC =  1964  MCODE      monz80.z80:1267
-EXDDP           = $0753 =  1875  MCODE      monz80.z80:1198
-EXDJNZ          = $0792 =  1938  MCODE      monz80.z80:1248
-EXFDP           = $075F =  1887  MCODE      monz80.z80:1206
-EXJP            = $078D =  1933  MCODE      monz80.z80:1243
-EXJPC           = $0788 =  1928  MCODE      monz80.z80:1238
-EXJPHL          = $0775 =  1909  MCODE      monz80.z80:1223
-EXJR            = $079B =  1947  MCODE      monz80.z80:1255
-EXJRC           = $077A =  1914  MCODE      monz80.z80:1228
-EXJRNC          = $077E =  1918  MCODE      monz80.z80:1230
-EXJRNZ          = $0786 =  1926  MCODE      monz80.z80:1234
-EXJRZ           = $0782 =  1922  MCODE      monz80.z80:1232
-EXRET           = $07CF =  1999  MCODE      monz80.z80:1294
-EXRETC          = $07CA =  1994  MCODE      monz80.z80:1289
-EXRST           = $076B =  1899  MCODE      monz80.z80:1214
-EXSKP           = $07C9 =  1993  MCODE      monz80.z80:1285
-FILL            = $0354 =   852  MCODE      monz80.z80:539
-GETADR          = $0480 =  1152  MCODE      monz80.z80:743
-GETADRD         = $049D =  1181  MCODE      monz80.z80:763
-GETC            = $0462 =  1122  MCODE      monz80.z80:722
-GETHEX          = $0434 =  1076  MCODE      monz80.z80:686
-GETHEXC         = $0447 =  1095  MCODE      monz80.z80:700
-GETNIB          = $044D =  1101  MCODE      monz80.z80:706
-GETRANG         = $0489 =  1161  MCODE      monz80.z80:751
-GO              = $01C5 =   453  MCODE      monz80.z80:316
-GOHL            = $07C6 =  1990  MCODE      monz80.z80:1284
-GOHLS           = $07B4 =  1972  MCODE      monz80.z80:1274 (unused)
-GOSTEP          = $06CD =  1741  MCODE      monz80.z80:1120
-GOSTEP1         = $06D5 =  1749  MCODE      monz80.z80:1124
-HELP            = $019B =   411  MCODE      monz80.z80:292
-HTEXT           = $0E0F =  3599  MCODE      monz80.z80:1654
-INPORT          = $0269 =   617  MCODE      monz80.z80:414
-IOCTL           = $7810 = 30736  MDATA      monz80.z80:63
-IOINIT          = $0F96 =  3990  _u68B50    monz80.z80:1679
-IXBYTE          = $06AE =  1710  MCODE      monz80.z80:1097
-IXNIB           = $06BB =  1723  MCODE      monz80.z80:1104
-LFCR            = $04D0 =  1232  MCODE      monz80.z80:802
-LOAD            = $03BA =   954  MCODE      monz80.z80:603
-MCODE           = $0000 =     0  MCODE      monz80.z80:74 (unused)
-MCODE_end       = $0F96 =  3990  MCODE      monz80.z80:74 (unused)
-MCODE_size      = $0F96 =  3990  MCODE      monz80.z80:74 (unused)
-MDATA           = $7800 = 30720  MDATA      monz80.z80:44
-MDATA_end       = $7860 = 30816  MDATA      monz80.z80:44 (unused)
-MDATA_size      = $0060 =    96  MDATA      monz80.z80:44 (unused)
-MONSTK          = $785F = 30815  MDATA      monz80.z80:69
-OUTPORT         = $0275 =   629  MCODE      monz80.z80:422
-PUTC            = $0FAD =  4013  _u68B50    monz80.z80:1699
-RDUMP           = $028F =   655  MCODE      monz80.z80:439
-REGTAB          = $0800 =  2048  MCODE      monz80.z80:1325
-RNTEXT          = $02AC =   684  MCODE      monz80.z80:456
-RPTAB           = $0820 =  2080  MCODE      monz80.z80:1334
-RPTABX          = $0830 =  2096  MCODE      monz80.z80:1338
-RPTABY          = $0840 =  2112  MCODE      monz80.z80:1342
-SETBRK          = $039A =   922  MCODE      monz80.z80:581
-SPACE           = $0506 =  1286  MCODE      monz80.z80:827
-STEP            = $0282 =   642  MCODE      monz80.z80:431
-STEPRET         = $072E =  1838  MCODE      monz80.z80:1178
-TABTAB          = $0870 =  2160  MCODE      monz80.z80:1356
-TEMP            = $7829 = 30761  MDATA      monz80.z80:65
-TEMP1           = $782B = 30763  MDATA      monz80.z80:66
-TEMP2           = $782C = 30764  MDATA      monz80.z80:67
-TESTC           = $0FA5 =  4005  _u68B50    monz80.z80:1691
-TESTCC          = $07E0 =  2016  MCODE      monz80.z80:1306
-UCODE           = $7860 = 30816  UCODE      monz80.z80:41
-UCODE_end       = $7860 = 30816  UCODE      monz80.z80:41 (unused)
-UCODE_size      = $0000 =     0  UCODE      monz80.z80:41 (unused)
-USTACK          = $FFFF = 65535  USTACK     monz80.z80:38
-USTACK_end      = $FFFF = 65535  USTACK     monz80.z80:38 (unused)
-USTACK_size     = $0000 =     0  USTACK     monz80.z80:38 (unused)
-WRADDR          = $04AE =  1198  MCODE      monz80.z80:774
-WRBYTE          = $04B3 =  1203  MCODE      monz80.z80:780
-WRMSG           = $050B =  1291  MCODE      monz80.z80:832
-WRNIB           = $04C0 =  1216  MCODE      monz80.z80:790
-WRPRINT         = $025B =   603  MCODE      monz80.z80:405
-WRSTR           = $0510 =  1296  MCODE      monz80.z80:838
-_BIOSCalls      = $0FB8 =  4024  _BIOSCalls monz80.z80:1709 (unused)
-_BIOSCalls_end  = $0FC1 =  4033  _BIOSCalls monz80.z80:1709 (unused)
-_BIOSCalls_size = $0009 =     9  _BIOSCalls monz80.z80:1709 (unused)
-_putc           = $0FBE =  4030  _BIOSCalls monz80.z80:1713 (unused)
-_testc          = $0FBB =  4027  _BIOSCalls monz80.z80:1712 (unused)
-_u68B50         = $0F96 =  3990  _u68B50    monz80.z80:1672 (unused)
-_u68B50_end     = $0FB8 =  4024  _u68B50    monz80.z80:1672 (unused)
-_u68B50_size    = $0022 =    34  _u68B50    monz80.z80:1672 (unused)
-_warmst         = $0FB8 =  4024  _BIOSCalls monz80.z80:1711 (unused)
-bdump1          = $036B =   875  MCODE      monz80.z80:553
-bdump2          = $0390 =   912  MCODE      monz80.z80:572
-bdump3          = $0393 =   915  MCODE      monz80.z80:573
-begin1          = $0080 =   128  MCODE      monz80.z80:137
-clrse1          = $0139 =   313  MCODE      monz80.z80:211
-cmd             = $00F9 =   249  MCODE      monz80.z80:165
-cmd1            = $0101 =   257  MCODE      monz80.z80:170
-cmd2            = $0117 =   279  MCODE      monz80.z80:188
-cmd3            = $011C =   284  MCODE      monz80.z80:193
-dis1            = $052A =  1322  MCODE      monz80.z80:858
-dis2            = $0538 =  1336  MCODE      monz80.z80:865
-dis3            = $0548 =  1352  MCODE      monz80.z80:872
-dis4            = $0553 =  1363  MCODE      monz80.z80:878
-dis5            = $055C =  1372  MCODE      monz80.z80:882
-dis7            = $056E =  1390  MCODE      monz80.z80:891
-dis8            = $0579 =  1401  MCODE      monz80.z80:897
-disa1           = $059E =  1438  MCODE      monz80.z80:920
-disa10          = $0612 =  1554  MCODE      monz80.z80:1000
-disa100         = $06A1 =  1697  MCODE      monz80.z80:1088
-disa11          = $0623 =  1571  MCODE      monz80.z80:1011
-disa12          = $062C =  1580  MCODE      monz80.z80:1016
-disa13          = $0635 =  1589  MCODE      monz80.z80:1021
-disa14          = $0646 =  1606  MCODE      monz80.z80:1031
-disa14a         = $0653 =  1619  MCODE      monz80.z80:1039
-disa15          = $0661 =  1633  MCODE      monz80.z80:1048
-disa15a         = $067E =  1662  MCODE      monz80.z80:1067
-disa16          = $0682 =  1666  MCODE      monz80.z80:1070
-disa17          = $068B =  1675  MCODE      monz80.z80:1075
-disa18          = $0699 =  1689  MCODE      monz80.z80:1084
-disa2           = $05A6 =  1446  MCODE      monz80.z80:927
-disa3           = $05AD =  1453  MCODE      monz80.z80:934
-disa4           = $05B7 =  1463  MCODE      monz80.z80:943
-disa5           = $05BB =  1467  MCODE      monz80.z80:945
-disa6           = $05CB =  1483  MCODE      monz80.z80:954
-disa61          = $05D0 =  1488  MCODE      monz80.z80:956
-disa62          = $05D9 =  1497  MCODE      monz80.z80:963
-disa63          = $05E6 =  1510  MCODE      monz80.z80:971
-disa7           = $05E9 =  1513  MCODE      monz80.z80:974
-disa8           = $05F5 =  1525  MCODE      monz80.z80:982
-disa81          = $05FC =  1532  MCODE      monz80.z80:985
-disa9           = $0607 =  1543  MCODE      monz80.z80:993
-disa900         = $06A9 =  1705  MCODE      monz80.z80:1092
-disa91          = $060D =  1549  MCODE      monz80.z80:997
-disass          = $057C =  1404  MCODE      monz80.z80:904
-disc1           = $0210 =   528  MCODE      monz80.z80:360
-dump1           = $0221 =   545  MCODE      monz80.z80:370
-dump2           = $022D =   557  MCODE      monz80.z80:375
-dump3           = $0245 =   581  MCODE      monz80.z80:388
-edit1           = $030D =   781  MCODE      monz80.z80:501
-edit2           = $0313 =   787  MCODE      monz80.z80:503
-edit3           = $0325 =   805  MCODE      monz80.z80:511
-edit4           = $032D =   813  MCODE      monz80.z80:516
-edit5           = $0336 =   822  MCODE      monz80.z80:520
-edit6           = $033A =   826  MCODE      monz80.z80:522
-edit7           = $0346 =   838  MCODE      monz80.z80:528
-exjr1           = $07A6 =  1958  MCODE      monz80.z80:1261
-fill1           = $035E =   862  MCODE      monz80.z80:543
-geta1           = $0483 =  1155  MCODE      monz80.z80:744
-getc1           = $0467 =  1127  MCODE      monz80.z80:725
-getc2           = $0474 =  1140  MCODE      monz80.z80:733
-getc3           = $047E =  1150  MCODE      monz80.z80:738
-geth1           = $043A =  1082  MCODE      monz80.z80:688
-help1           = $019E =   414  MCODE      monz80.z80:293
-help2           = $01A3 =   419  MCODE      monz80.z80:295
-help3           = $01B2 =   434  MCODE      monz80.z80:304
-help4           = $01C1 =   449  MCODE      monz80.z80:310
-imbrk1          = $01DB =   475  MCODE      monz80.z80:326
-imbrk2          = $01E8 =   488  MCODE      monz80.z80:337
-ixnib1          = $06C4 =  1732  MCODE      monz80.z80:1109
-lfcr1           = $04E6 =  1254  MCODE      monz80.z80:811
-lfcr2           = $04F5 =  1269  MCODE      monz80.z80:817
-lfcr4           = $04FC =  1276  MCODE      monz80.z80:820
-load1           = $03BF =   959  MCODE      monz80.z80:605
-putc1           = $0FAE =  4014  _u68B50    monz80.z80:1700
-rdump1          = $0295 =   661  MCODE      monz80.z80:441
-rembrk1         = $0062 =    98  MCODE      monz80.z80:116
-rembrk2         = $006C =   108  MCODE      monz80.z80:125
-setb1           = $03AF =   943  MCODE      monz80.z80:593
-step1           = $06F7 =  1783  MCODE      monz80.z80:1144
-step2           = $0702 =  1794  MCODE      monz80.z80:1154
-step3           = $0729 =  1833  MCODE      monz80.z80:1172
-uAF             = $7800 = 30720  MDATA      monz80.z80:47
-uBC             = $7802 = 30722  MDATA      monz80.z80:48
-uDE             = $7804 = 30724  MDATA      monz80.z80:49
-uHL             = $7806 = 30726  MDATA      monz80.z80:50
-uIX             = $7808 = 30728  MDATA      monz80.z80:51
-uIY             = $780A = 30730  MDATA      monz80.z80:52
-uPC             = $780C = 30732  MDATA      monz80.z80:53
-uSP             = $780E = 30734  MDATA      monz80.z80:54
-wrnib1          = $04C9 =  1225  MCODE      monz80.z80:795
-wrpri1          = $0264 =   612  MCODE      monz80.z80:409
-xACM            = $008B =   139  MCODE      monz80.z80:1379
-xADC            = $0095 =   149  MCODE      monz80.z80:1399
-xADD            = $0094 =   148  MCODE      monz80.z80:1397
-xAF             = $0090 =   144  MCODE      monz80.z80:1389
-xAND            = $0098 =   152  MCODE      monz80.z80:1405
-xBC             = $0081 =   129  MCODE      monz80.z80:1359 (unused)
-xBCI            = $0086 =   134  MCODE      monz80.z80:1369
-xBIT            = $00A5 =   165  MCODE      monz80.z80:1431
-xCALL           = $00A1 =   161  MCODE      monz80.z80:1423
-xCMA            = $008C =   140  MCODE      monz80.z80:1381
-xCP             = $0093 =   147  MCODE      monz80.z80:1395
-xDE             = $0082 =   130  MCODE      monz80.z80:1361
-xDEC            = $009C =   156  MCODE      monz80.z80:1413
-xDEI            = $0087 =   135  MCODE      monz80.z80:1371
-xEX             = $0091 =   145  MCODE      monz80.z80:1391
-xHL             = $0083 =   131  MCODE      monz80.z80:1363
-xHLI            = $0088 =   136  MCODE      monz80.z80:1373
-xIN             = $00A3 =   163  MCODE      monz80.z80:1427
-xINC            = $009B =   155  MCODE      monz80.z80:1411
-xIX             = $0084 =   132  MCODE      monz80.z80:1365
-xIXI            = $0089 =   137  MCODE      monz80.z80:1375
-xIY             = $0085 =   133  MCODE      monz80.z80:1367
-xIYI            = $008A =   138  MCODE      monz80.z80:1377
-xJP             = $009F =   159  MCODE      monz80.z80:1419
-xJR             = $00A0 =   160  MCODE      monz80.z80:1421
-xLD             = $0080 =   128  MCODE      monz80.z80:1357
-xLDx            = $0092 =   146  MCODE      monz80.z80:1393
-xOR             = $0099 =   153  MCODE      monz80.z80:1407
-xOUT            = $00A4 =   164  MCODE      monz80.z80:1429
-xPOP            = $008F =   143  MCODE      monz80.z80:1387
-xPUSH           = $008E =   142  MCODE      monz80.z80:1385
-xRES            = $00A7 =   167  MCODE      monz80.z80:1435
-xRET            = $00A2 =   162  MCODE      monz80.z80:1425
-xRL             = $009D =   157  MCODE      monz80.z80:1415
-xRR             = $009E =   158  MCODE      monz80.z80:1417
-xSBC            = $0097 =   151  MCODE      monz80.z80:1403
-xSET            = $00A6 =   166  MCODE      monz80.z80:1433
-xSP             = $008D =   141  MCODE      monz80.z80:1383
-xSUB            = $0096 =   150  MCODE      monz80.z80:1401
-xXOR            = $009A =   154  MCODE      monz80.z80:1409
+BDUMP           = $0366 =   870  MCODE      monz80.z80:586
+BEGIN           = $0074 =   116  MCODE      monz80.z80:167
+BRKP1           = $0040 =    64  MCODE      monz80.z80:133 (unused)
+BRKPT           = $0038 =    56  MCODE      monz80.z80:129 (unused)
+BRKTAB          = $7811 = 30737  MDATA      monz80.z80:99
+BUFFER          = $782D = 30765  MDATA      monz80.z80:103
+CAF             = $02CD =   717  MCODE      monz80.z80:500
+CBC             = $02D2 =   722  MCODE      monz80.z80:502
+CCTAB           = $0850 =  2128  MCODE      monz80.z80:1382
+CDE             = $02D7 =   727  MCODE      monz80.z80:504
+CHL             = $02DC =   732  MCODE      monz80.z80:506
+CHLDE           = $0255 =   597  MCODE      monz80.z80:433
+CHREG           = $02F3 =   755  MCODE      monz80.z80:516
+CIX             = $02E1 =   737  MCODE      monz80.z80:508
+CIY             = $02E6 =   742  MCODE      monz80.z80:510
+CLRSER          = $0136 =   310  MCODE      monz80.z80:245
+CMDRET          = $012F =   303  MCODE      monz80.z80:241
+CPC             = $02EB =   747  MCODE      monz80.z80:512
+CSP             = $02F0 =   752  MCODE      monz80.z80:514
+CTABLE          = $0146 =   326  MCODE      monz80.z80:279
+DISASM          = $0519 =  1305  MCODE      monz80.z80:883
+DISCMD          = $020D =   525  MCODE      monz80.z80:394
+DLEOF           = $042F =  1071  MCODE      monz80.z80:713
+DLERR           = $0431 =  1073  MCODE      monz80.z80:716
+DLINT           = $0406 =  1030  MCODE      monz80.z80:685
+DLINT1          = $041F =  1055  MCODE      monz80.z80:701
+DLMOT           = $03D3 =   979  MCODE      monz80.z80:653 (unused)
+DLREC           = $03C8 =   968  MCODE      monz80.z80:647
+DMOT1           = $03F5 =  1013  MCODE      monz80.z80:672
+DTAB            = $0910 =  2320  MCODE      monz80.z80:1487
+DTABCB          = $0ACF =  2767  MCODE      monz80.z80:1558
+DTABDD          = $0B19 =  2841  MCODE      monz80.z80:1570
+DTABED          = $0D01 =  3329  MCODE      monz80.z80:1632
+DTABFD          = $0C0D =  3085  MCODE      monz80.z80:1601
+DUMP            = $021E =   542  MCODE      monz80.z80:404
+EDIT            = $030A =   778  MCODE      monz80.z80:535
+EFEND           = $0E0F =  3599  MCODE      monz80.z80:1685
+EFSIZE          = $0010 =    16             monz80.z80:70
+EFTAB           = $0DCF =  3535  MCODE      monz80.z80:1669
+ENTMON          = $00E7 =   231  MCODE      monz80.z80:192
+ERROR           = $0129 =   297  MCODE      monz80.z80:239
+EXCALL          = $07B1 =  1969  MCODE      monz80.z80:1307
+EXCALLC         = $07AC =  1964  MCODE      monz80.z80:1302
+EXDDP           = $0753 =  1875  MCODE      monz80.z80:1233
+EXDJNZ          = $0792 =  1938  MCODE      monz80.z80:1283
+EXFDP           = $075F =  1887  MCODE      monz80.z80:1241
+EXJP            = $078D =  1933  MCODE      monz80.z80:1278
+EXJPC           = $0788 =  1928  MCODE      monz80.z80:1273
+EXJPHL          = $0775 =  1909  MCODE      monz80.z80:1258
+EXJR            = $079B =  1947  MCODE      monz80.z80:1290
+EXJRC           = $077A =  1914  MCODE      monz80.z80:1263
+EXJRNC          = $077E =  1918  MCODE      monz80.z80:1265
+EXJRNZ          = $0786 =  1926  MCODE      monz80.z80:1269
+EXJRZ           = $0782 =  1922  MCODE      monz80.z80:1267
+EXRET           = $07CF =  1999  MCODE      monz80.z80:1329
+EXRETC          = $07CA =  1994  MCODE      monz80.z80:1324
+EXRST           = $076B =  1899  MCODE      monz80.z80:1249
+EXSKP           = $07C9 =  1993  MCODE      monz80.z80:1320
+FILL            = $0354 =   852  MCODE      monz80.z80:574
+GETADR          = $0480 =  1152  MCODE      monz80.z80:778
+GETADRD         = $049D =  1181  MCODE      monz80.z80:798
+GETC            = $0462 =  1122  MCODE      monz80.z80:757
+GETHEX          = $0434 =  1076  MCODE      monz80.z80:721
+GETHEXC         = $0447 =  1095  MCODE      monz80.z80:735
+GETNIB          = $044D =  1101  MCODE      monz80.z80:741
+GETRANG         = $0489 =  1161  MCODE      monz80.z80:786
+GO              = $01C5 =   453  MCODE      monz80.z80:351
+GOHL            = $07C6 =  1990  MCODE      monz80.z80:1319
+GOHLS           = $07B4 =  1972  MCODE      monz80.z80:1309 (unused)
+GOSTEP          = $06CD =  1741  MCODE      monz80.z80:1155
+GOSTEP1         = $06D5 =  1749  MCODE      monz80.z80:1159
+HELP            = $019B =   411  MCODE      monz80.z80:327
+HTEXT           = $0E0F =  3599  MCODE      monz80.z80:1689
+INPORT          = $0269 =   617  MCODE      monz80.z80:449
+IOCTL           = $7810 = 30736  MDATA      monz80.z80:98
+IOINIT          = $0F96 =  3990  _u68B50    monz80.z80:1714
+IXBYTE          = $06AE =  1710  MCODE      monz80.z80:1132
+IXNIB           = $06BB =  1723  MCODE      monz80.z80:1139
+LFCR            = $04D0 =  1232  MCODE      monz80.z80:837
+LOAD            = $03BA =   954  MCODE      monz80.z80:638
+MCODE           = $0000 =     0  MCODE      monz80.z80:109 (unused)
+MCODE_end       = $0F96 =  3990  MCODE      monz80.z80:109 (unused)
+MCODE_size      = $0F96 =  3990  MCODE      monz80.z80:109 (unused)
+MDATA           = $7800 = 30720  MDATA      monz80.z80:79
+MDATA_end       = $7860 = 30816  MDATA      monz80.z80:79 (unused)
+MDATA_size      = $0060 =    96  MDATA      monz80.z80:79 (unused)
+MONSTK          = $785F = 30815  MDATA      monz80.z80:104
+OUTPORT         = $0275 =   629  MCODE      monz80.z80:457
+PUTC            = $0FAD =  4013  _u68B50    monz80.z80:1734
+RDUMP           = $028F =   655  MCODE      monz80.z80:474
+REGTAB          = $0800 =  2048  MCODE      monz80.z80:1360
+RNTEXT          = $02AC =   684  MCODE      monz80.z80:491
+RPTAB           = $0820 =  2080  MCODE      monz80.z80:1369
+RPTABX          = $0830 =  2096  MCODE      monz80.z80:1373
+RPTABY          = $0840 =  2112  MCODE      monz80.z80:1377
+SETBRK          = $039A =   922  MCODE      monz80.z80:616
+SPACE           = $0506 =  1286  MCODE      monz80.z80:862
+STEP            = $0282 =   642  MCODE      monz80.z80:466
+STEPRET         = $072E =  1838  MCODE      monz80.z80:1213
+TABTAB          = $0870 =  2160  MCODE      monz80.z80:1391
+TEMP            = $7829 = 30761  MDATA      monz80.z80:100
+TEMP1           = $782B = 30763  MDATA      monz80.z80:101
+TEMP2           = $782C = 30764  MDATA      monz80.z80:102
+TESTC           = $0FA5 =  4005  _u68B50    monz80.z80:1726
+TESTCC          = $07E0 =  2016  MCODE      monz80.z80:1341
+UCODE           = $7860 = 30816  UCODE      monz80.z80:76
+UCODE_end       = $7860 = 30816  UCODE      monz80.z80:76 (unused)
+UCODE_size      = $0000 =     0  UCODE      monz80.z80:76 (unused)
+USTACK          = $FFFF = 65535  USTACK     monz80.z80:73
+USTACK_end      = $FFFF = 65535  USTACK     monz80.z80:73 (unused)
+USTACK_size     = $0000 =     0  USTACK     monz80.z80:73 (unused)
+WRADDR          = $04AE =  1198  MCODE      monz80.z80:809
+WRBYTE          = $04B3 =  1203  MCODE      monz80.z80:815
+WRMSG           = $050B =  1291  MCODE      monz80.z80:867
+WRNIB           = $04C0 =  1216  MCODE      monz80.z80:825
+WRPRINT         = $025B =   603  MCODE      monz80.z80:440
+WRSTR           = $0510 =  1296  MCODE      monz80.z80:873
+_BIOSCalls      = $0FB8 =  4024  _BIOSCalls monz80.z80:1744 (unused)
+_BIOSCalls_end  = $0FC1 =  4033  _BIOSCalls monz80.z80:1744 (unused)
+_BIOSCalls_size = $0009 =     9  _BIOSCalls monz80.z80:1744 (unused)
+_putc           = $0FBE =  4030  _BIOSCalls monz80.z80:1748 (unused)
+_testc          = $0FBB =  4027  _BIOSCalls monz80.z80:1747 (unused)
+_u68B50         = $0F96 =  3990  _u68B50    monz80.z80:1707 (unused)
+_u68B50_end     = $0FB8 =  4024  _u68B50    monz80.z80:1707 (unused)
+_u68B50_size    = $0022 =    34  _u68B50    monz80.z80:1707 (unused)
+_warmst         = $0FB8 =  4024  _BIOSCalls monz80.z80:1746 (unused)
+bdump1          = $036B =   875  MCODE      monz80.z80:588
+bdump2          = $0390 =   912  MCODE      monz80.z80:607
+bdump3          = $0393 =   915  MCODE      monz80.z80:608
+begin1          = $0080 =   128  MCODE      monz80.z80:172
+clrse1          = $0139 =   313  MCODE      monz80.z80:246
+cmd             = $00F9 =   249  MCODE      monz80.z80:200
+cmd1            = $0101 =   257  MCODE      monz80.z80:205
+cmd2            = $0117 =   279  MCODE      monz80.z80:223
+cmd3            = $011C =   284  MCODE      monz80.z80:228
+dis1            = $052A =  1322  MCODE      monz80.z80:893
+dis2            = $0538 =  1336  MCODE      monz80.z80:900
+dis3            = $0548 =  1352  MCODE      monz80.z80:907
+dis4            = $0553 =  1363  MCODE      monz80.z80:913
+dis5            = $055C =  1372  MCODE      monz80.z80:917
+dis7            = $056E =  1390  MCODE      monz80.z80:926
+dis8            = $0579 =  1401  MCODE      monz80.z80:932
+disa1           = $059E =  1438  MCODE      monz80.z80:955
+disa10          = $0612 =  1554  MCODE      monz80.z80:1035
+disa100         = $06A1 =  1697  MCODE      monz80.z80:1123
+disa11          = $0623 =  1571  MCODE      monz80.z80:1046
+disa12          = $062C =  1580  MCODE      monz80.z80:1051
+disa13          = $0635 =  1589  MCODE      monz80.z80:1056
+disa14          = $0646 =  1606  MCODE      monz80.z80:1066
+disa14a         = $0653 =  1619  MCODE      monz80.z80:1074
+disa15          = $0661 =  1633  MCODE      monz80.z80:1083
+disa15a         = $067E =  1662  MCODE      monz80.z80:1102
+disa16          = $0682 =  1666  MCODE      monz80.z80:1105
+disa17          = $068B =  1675  MCODE      monz80.z80:1110
+disa18          = $0699 =  1689  MCODE      monz80.z80:1119
+disa2           = $05A6 =  1446  MCODE      monz80.z80:962
+disa3           = $05AD =  1453  MCODE      monz80.z80:969
+disa4           = $05B7 =  1463  MCODE      monz80.z80:978
+disa5           = $05BB =  1467  MCODE      monz80.z80:980
+disa6           = $05CB =  1483  MCODE      monz80.z80:989
+disa61          = $05D0 =  1488  MCODE      monz80.z80:991
+disa62          = $05D9 =  1497  MCODE      monz80.z80:998
+disa63          = $05E6 =  1510  MCODE      monz80.z80:1006
+disa7           = $05E9 =  1513  MCODE      monz80.z80:1009
+disa8           = $05F5 =  1525  MCODE      monz80.z80:1017
+disa81          = $05FC =  1532  MCODE      monz80.z80:1020
+disa9           = $0607 =  1543  MCODE      monz80.z80:1028
+disa900         = $06A9 =  1705  MCODE      monz80.z80:1127
+disa91          = $060D =  1549  MCODE      monz80.z80:1032
+disass          = $057C =  1404  MCODE      monz80.z80:939
+disc1           = $0210 =   528  MCODE      monz80.z80:395
+dump1           = $0221 =   545  MCODE      monz80.z80:405
+dump2           = $022D =   557  MCODE      monz80.z80:410
+dump3           = $0245 =   581  MCODE      monz80.z80:423
+edit1           = $030D =   781  MCODE      monz80.z80:536
+edit2           = $0313 =   787  MCODE      monz80.z80:538
+edit3           = $0325 =   805  MCODE      monz80.z80:546
+edit4           = $032D =   813  MCODE      monz80.z80:551
+edit5           = $0336 =   822  MCODE      monz80.z80:555
+edit6           = $033A =   826  MCODE      monz80.z80:557
+edit7           = $0346 =   838  MCODE      monz80.z80:563
+exjr1           = $07A6 =  1958  MCODE      monz80.z80:1296
+fill1           = $035E =   862  MCODE      monz80.z80:578
+geta1           = $0483 =  1155  MCODE      monz80.z80:779
+getc1           = $0467 =  1127  MCODE      monz80.z80:760
+getc2           = $0474 =  1140  MCODE      monz80.z80:768
+getc3           = $047E =  1150  MCODE      monz80.z80:773
+geth1           = $043A =  1082  MCODE      monz80.z80:723
+help1           = $019E =   414  MCODE      monz80.z80:328
+help2           = $01A3 =   419  MCODE      monz80.z80:330
+help3           = $01B2 =   434  MCODE      monz80.z80:339
+help4           = $01C1 =   449  MCODE      monz80.z80:345
+imbrk1          = $01DB =   475  MCODE      monz80.z80:361
+imbrk2          = $01E8 =   488  MCODE      monz80.z80:372
+ixnib1          = $06C4 =  1732  MCODE      monz80.z80:1144
+lfcr1           = $04E6 =  1254  MCODE      monz80.z80:846
+lfcr2           = $04F5 =  1269  MCODE      monz80.z80:852
+lfcr4           = $04FC =  1276  MCODE      monz80.z80:855
+load1           = $03BF =   959  MCODE      monz80.z80:640
+putc1           = $0FAE =  4014  _u68B50    monz80.z80:1735
+rdump1          = $0295 =   661  MCODE      monz80.z80:476
+rembrk1         = $0062 =    98  MCODE      monz80.z80:151
+rembrk2         = $006C =   108  MCODE      monz80.z80:160
+setb1           = $03AF =   943  MCODE      monz80.z80:628
+step1           = $06F7 =  1783  MCODE      monz80.z80:1179
+step2           = $0702 =  1794  MCODE      monz80.z80:1189
+step3           = $0729 =  1833  MCODE      monz80.z80:1207
+uAF             = $7800 = 30720  MDATA      monz80.z80:82
+uBC             = $7802 = 30722  MDATA      monz80.z80:83
+uDE             = $7804 = 30724  MDATA      monz80.z80:84
+uHL             = $7806 = 30726  MDATA      monz80.z80:85
+uIX             = $7808 = 30728  MDATA      monz80.z80:86
+uIY             = $780A = 30730  MDATA      monz80.z80:87
+uPC             = $780C = 30732  MDATA      monz80.z80:88
+uSP             = $780E = 30734  MDATA      monz80.z80:89
+wrnib1          = $04C9 =  1225  MCODE      monz80.z80:830
+wrpri1          = $0264 =   612  MCODE      monz80.z80:444
+xACM            = $008B =   139  MCODE      monz80.z80:1414
+xADC            = $0095 =   149  MCODE      monz80.z80:1434
+xADD            = $0094 =   148  MCODE      monz80.z80:1432
+xAF             = $0090 =   144  MCODE      monz80.z80:1424
+xAND            = $0098 =   152  MCODE      monz80.z80:1440
+xBC             = $0081 =   129  MCODE      monz80.z80:1394 (unused)
+xBCI            = $0086 =   134  MCODE      monz80.z80:1404
+xBIT            = $00A5 =   165  MCODE      monz80.z80:1466
+xCALL           = $00A1 =   161  MCODE      monz80.z80:1458
+xCMA            = $008C =   140  MCODE      monz80.z80:1416
+xCP             = $0093 =   147  MCODE      monz80.z80:1430
+xDE             = $0082 =   130  MCODE      monz80.z80:1396
+xDEC            = $009C =   156  MCODE      monz80.z80:1448
+xDEI            = $0087 =   135  MCODE      monz80.z80:1406
+xEX             = $0091 =   145  MCODE      monz80.z80:1426
+xHL             = $0083 =   131  MCODE      monz80.z80:1398
+xHLI            = $0088 =   136  MCODE      monz80.z80:1408
+xIN             = $00A3 =   163  MCODE      monz80.z80:1462
+xINC            = $009B =   155  MCODE      monz80.z80:1446
+xIX             = $0084 =   132  MCODE      monz80.z80:1400
+xIXI            = $0089 =   137  MCODE      monz80.z80:1410
+xIY             = $0085 =   133  MCODE      monz80.z80:1402
+xIYI            = $008A =   138  MCODE      monz80.z80:1412
+xJP             = $009F =   159  MCODE      monz80.z80:1454
+xJR             = $00A0 =   160  MCODE      monz80.z80:1456
+xLD             = $0080 =   128  MCODE      monz80.z80:1392
+xLDx            = $0092 =   146  MCODE      monz80.z80:1428
+xOR             = $0099 =   153  MCODE      monz80.z80:1442
+xOUT            = $00A4 =   164  MCODE      monz80.z80:1464
+xPOP            = $008F =   143  MCODE      monz80.z80:1422
+xPUSH           = $008E =   142  MCODE      monz80.z80:1420
+xRES            = $00A7 =   167  MCODE      monz80.z80:1470
+xRET            = $00A2 =   162  MCODE      monz80.z80:1460
+xRL             = $009D =   157  MCODE      monz80.z80:1450
+xRR             = $009E =   158  MCODE      monz80.z80:1452
+xSBC            = $0097 =   151  MCODE      monz80.z80:1438
+xSET            = $00A6 =   166  MCODE      monz80.z80:1468
+xSP             = $008D =   141  MCODE      monz80.z80:1418
+xSUB            = $0096 =   150  MCODE      monz80.z80:1436
+xXOR            = $009A =   154  MCODE      monz80.z80:1444
 
 
-total time: 0.0074 sec.
+total time: 0.0093 sec.
 no errors
