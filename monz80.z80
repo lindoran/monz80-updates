@@ -122,6 +122,15 @@ MONSTK  EQU $             ;Some free space
         ORG 6 * 8         ;RST 6
         JP UCODE + (6 * 8) ;Execute user code
         ORG 7 * 8         ;RST 7-Breakpoint
+; Jump table 
+#code _BIOSCalls
+        
+_warmst JP ENTMON         ;warm entry point of monitor (returns to monitor)
+_testc  JP TESTC          ;tst for ch, ret a=0 no ch or a=ch
+_putc   JP PUTC           ;put character to console
+
+#code _mainrom
+
 ;
 ; Breakpoint encountered-save registers, replace breakpoints
 ;
@@ -161,9 +170,9 @@ rembrk2 INC HL            ;Skip to next
         DJNZ rembrk1      ;Remove them all
         CALL RDUMP        ;Display registers
         JR ENTMON         ;Enter monitor
-        
+
+
 ; Cold start entry point
-        
 BEGIN   LD SP, MONSTK     ;Set initial stack
         CALL IOINIT       ;Initialize I/O
 ; Initialize monitor memory to zero
@@ -1738,14 +1747,5 @@ putc1   IN A, (80h)       ;Read status
         POP AF            ;Restore
         OUT (81h), A      ;Write to data port
         RET
-        
-
-;simple jump table for BIOS calls
-#code _BIOSCalls
-        
-_warmst JP ENTMON         ;warm entry point of monitor (returns to monitor)
-_testc  JP TESTC          ;tst for ch, ret a=0 no ch or a=ch
-_putc   JP PUTC           ;put character to console
-        
         
 #end
