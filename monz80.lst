@@ -1,6 +1,6 @@
                         ; --------------------------------------
                         ; zasm: assemble "monz80.asm"
-                        ; date: 2025-07-08 10:00:29
+                        ; date: 2025-07-08 10:37:08
                         ; --------------------------------------
 
 
@@ -2043,270 +2043,285 @@ FFFF:                   #data USTACK, $FFFF			; user stack address (top of RAM)
 0FB5: D381     [46]             OUT	 (81h),A	;Write to data port
 0FB7: C9       [56]         RET
                         
+0FB8:                   #code _BIOSCalls
+                        ;; siple jump table for BIOS calls
+                        
+0FB8: C3E700   [10]     _warmst JP   ENTMON		; warm entry point of monitor (returns to monitor)
+0FBB: C3A50F   [10]     _testc 	JP   TESTC		; tst for ch, ret a=0 no ch or a=ch 
+0FBE: C3AD0F   [10]     _putc   JP   PUTC		; put character to console
+                        
+                        
                         #end
 
 
 ; +++ segments +++
 
-#DATA UCODE    = $7860 = 30816,  size = $0000 =     0
-#DATA MDATA    = $7800 = 30720,  size = $0060 =    96
-#CODE MCODE    = $0000 =     0,  size = $0F96 =  3990
-#CODE _u68B50  = $0F96 =  3990,  size = $0022 =    34
+#DATA UCODE       = $7860 = 30816,  size = $0000 =     0
+#DATA MDATA       = $7800 = 30720,  size = $0060 =    96
+#CODE MCODE       = $0000 =     0,  size = $0F96 =  3990
+#CODE _u68B50     = $0F96 =  3990,  size = $0022 =    34
+#CODE _BIOSCalls  = $0FB8 =  4024,  size = $0009 =     9
 
 ; +++ global symbols +++
 
-BDUMP        = $0366 =   870  MCODE   monz80.asm:575
-BEGIN        = $0074 =   116  MCODE   monz80.asm:156
-BRKP1        = $0040 =    64  MCODE   monz80.asm:122 (unused)
-BRKPT        = $0038 =    56  MCODE   monz80.asm:118 (unused)
-BRKTAB       = $7811 = 30737  MDATA   monz80.asm:88
-BUFFER       = $782D = 30765  MDATA   monz80.asm:92
-CAF          = $02CD =   717  MCODE   monz80.asm:489
-CBC          = $02D2 =   722  MCODE   monz80.asm:491
-CCTAB        = $0850 =  2128  MCODE   monz80.asm:1371
-CDE          = $02D7 =   727  MCODE   monz80.asm:493
-CHL          = $02DC =   732  MCODE   monz80.asm:495
-CHLDE        = $0255 =   597  MCODE   monz80.asm:422
-CHREG        = $02F3 =   755  MCODE   monz80.asm:505
-CIX          = $02E1 =   737  MCODE   monz80.asm:497
-CIY          = $02E6 =   742  MCODE   monz80.asm:499
-CLRSER       = $0136 =   310  MCODE   monz80.asm:234
-CMDRET       = $012F =   303  MCODE   monz80.asm:230
-CPC          = $02EB =   747  MCODE   monz80.asm:501
-CSP          = $02F0 =   752  MCODE   monz80.asm:503
-CTABLE       = $0146 =   326  MCODE   monz80.asm:268
-DISASM       = $0519 =  1305  MCODE   monz80.asm:872
-DISCMD       = $020D =   525  MCODE   monz80.asm:383
-DLEOF        = $042F =  1071  MCODE   monz80.asm:702
-DLERR        = $0431 =  1073  MCODE   monz80.asm:705
-DLINT        = $0406 =  1030  MCODE   monz80.asm:674
-DLINT1       = $041F =  1055  MCODE   monz80.asm:690
-DLMOT        = $03D3 =   979  MCODE   monz80.asm:642 (unused)
-DLREC        = $03C8 =   968  MCODE   monz80.asm:636
-DMOT1        = $03F5 =  1013  MCODE   monz80.asm:661
-DTAB         = $0910 =  2320  MCODE   monz80.asm:1476
-DTABCB       = $0ACF =  2767  MCODE   monz80.asm:1547
-DTABDD       = $0B19 =  2841  MCODE   monz80.asm:1559
-DTABED       = $0D01 =  3329  MCODE   monz80.asm:1621
-DTABFD       = $0C0D =  3085  MCODE   monz80.asm:1590
-DUMP         = $021E =   542  MCODE   monz80.asm:393
-EDIT         = $030A =   778  MCODE   monz80.asm:524
-EFEND        = $0E0F =  3599  MCODE   monz80.asm:1674
-EFSIZE       = $0010 =    16          monz80.asm:59
-EFTAB        = $0DCF =  3535  MCODE   monz80.asm:1658
-ENTMON       = $00E7 =   231  MCODE   monz80.asm:181
-ERROR        = $0129 =   297  MCODE   monz80.asm:228
-EXCALL       = $07B1 =  1969  MCODE   monz80.asm:1296
-EXCALLC      = $07AC =  1964  MCODE   monz80.asm:1291
-EXDDP        = $0753 =  1875  MCODE   monz80.asm:1222
-EXDJNZ       = $0792 =  1938  MCODE   monz80.asm:1272
-EXFDP        = $075F =  1887  MCODE   monz80.asm:1230
-EXJP         = $078D =  1933  MCODE   monz80.asm:1267
-EXJPC        = $0788 =  1928  MCODE   monz80.asm:1262
-EXJPHL       = $0775 =  1909  MCODE   monz80.asm:1247
-EXJR         = $079B =  1947  MCODE   monz80.asm:1279
-EXJRC        = $077A =  1914  MCODE   monz80.asm:1252
-EXJRNC       = $077E =  1918  MCODE   monz80.asm:1254
-EXJRNZ       = $0786 =  1926  MCODE   monz80.asm:1258
-EXJRZ        = $0782 =  1922  MCODE   monz80.asm:1256
-EXRET        = $07CF =  1999  MCODE   monz80.asm:1318
-EXRETC       = $07CA =  1994  MCODE   monz80.asm:1313
-EXRST        = $076B =  1899  MCODE   monz80.asm:1238
-EXSKP        = $07C9 =  1993  MCODE   monz80.asm:1309
-FILL         = $0354 =   852  MCODE   monz80.asm:563
-GETADR       = $0480 =  1152  MCODE   monz80.asm:767
-GETADRD      = $049D =  1181  MCODE   monz80.asm:787
-GETC         = $0462 =  1122  MCODE   monz80.asm:746
-GETHEX       = $0434 =  1076  MCODE   monz80.asm:710
-GETHEXC      = $0447 =  1095  MCODE   monz80.asm:724
-GETNIB       = $044D =  1101  MCODE   monz80.asm:730
-GETRANG      = $0489 =  1161  MCODE   monz80.asm:775
-GO           = $01C5 =   453  MCODE   monz80.asm:340
-GOHL         = $07C6 =  1990  MCODE   monz80.asm:1308
-GOHLS        = $07B4 =  1972  MCODE   monz80.asm:1298 (unused)
-GOSTEP       = $06CD =  1741  MCODE   monz80.asm:1144
-GOSTEP1      = $06D5 =  1749  MCODE   monz80.asm:1148
-HELP         = $019B =   411  MCODE   monz80.asm:316
-HTEXT        = $0E0F =  3599  MCODE   monz80.asm:1678
-INPORT       = $0269 =   617  MCODE   monz80.asm:438
-IOCTL        = $7810 = 30736  MDATA   monz80.asm:87
-IOINIT       = $0F96 =  3990  _u68B50 monz80.asm:1703
-IXBYTE       = $06AE =  1710  MCODE   monz80.asm:1121
-IXNIB        = $06BB =  1723  MCODE   monz80.asm:1128
-LFCR         = $04D0 =  1232  MCODE   monz80.asm:826
-LOAD         = $03BA =   954  MCODE   monz80.asm:627
-MCODE        = $0000 =     0  MCODE   monz80.asm:98 (unused)
-MCODE_end    = $0F96 =  3990  MCODE   monz80.asm:98 (unused)
-MCODE_size   = $0F96 =  3990  MCODE   monz80.asm:98 (unused)
-MDATA        = $7800 = 30720  MDATA   monz80.asm:68
-MDATA_end    = $7860 = 30816  MDATA   monz80.asm:68 (unused)
-MDATA_size   = $0060 =    96  MDATA   monz80.asm:68 (unused)
-MONSTK       = $785F = 30815  MDATA   monz80.asm:93
-OUTPORT      = $0275 =   629  MCODE   monz80.asm:446
-PUTC         = $0FAD =  4013  _u68B50 monz80.asm:1723
-RDUMP        = $028F =   655  MCODE   monz80.asm:463
-REGTAB       = $0800 =  2048  MCODE   monz80.asm:1349
-RNTEXT       = $02AC =   684  MCODE   monz80.asm:480
-RPTAB        = $0820 =  2080  MCODE   monz80.asm:1358
-RPTABX       = $0830 =  2096  MCODE   monz80.asm:1362
-RPTABY       = $0840 =  2112  MCODE   monz80.asm:1366
-SETBRK       = $039A =   922  MCODE   monz80.asm:605
-SPACE        = $0506 =  1286  MCODE   monz80.asm:851
-STEP         = $0282 =   642  MCODE   monz80.asm:455
-STEPRET      = $072E =  1838  MCODE   monz80.asm:1202
-TABTAB       = $0870 =  2160  MCODE   monz80.asm:1380
-TEMP         = $7829 = 30761  MDATA   monz80.asm:89
-TEMP1        = $782B = 30763  MDATA   monz80.asm:90
-TEMP2        = $782C = 30764  MDATA   monz80.asm:91
-TESTC        = $0FA5 =  4005  _u68B50 monz80.asm:1715
-TESTCC       = $07E0 =  2016  MCODE   monz80.asm:1330
-UCODE        = $7860 = 30816  UCODE   monz80.asm:65
-UCODE_end    = $7860 = 30816  UCODE   monz80.asm:65 (unused)
-UCODE_size   = $0000 =     0  UCODE   monz80.asm:65 (unused)
-USTACK       = $FFFF = 65535  USTACK  monz80.asm:62
-USTACK_end   = $FFFF = 65535  USTACK  monz80.asm:62 (unused)
-USTACK_size  = $0000 =     0  USTACK  monz80.asm:62 (unused)
-WRADDR       = $04AE =  1198  MCODE   monz80.asm:798
-WRBYTE       = $04B3 =  1203  MCODE   monz80.asm:804
-WRMSG        = $050B =  1291  MCODE   monz80.asm:856
-WRNIB        = $04C0 =  1216  MCODE   monz80.asm:814
-WRPRINT      = $025B =   603  MCODE   monz80.asm:429
-WRSTR        = $0510 =  1296  MCODE   monz80.asm:862
-_u68B50      = $0F96 =  3990  _u68B50 monz80.asm:1696 (unused)
-_u68B50_end  = $0FB8 =  4024  _u68B50 monz80.asm:1696 (unused)
-_u68B50_size = $0022 =    34  _u68B50 monz80.asm:1696 (unused)
-bdump1       = $036B =   875  MCODE   monz80.asm:577
-bdump2       = $0390 =   912  MCODE   monz80.asm:596
-bdump3       = $0393 =   915  MCODE   monz80.asm:597
-begin1       = $0080 =   128  MCODE   monz80.asm:161
-clrse1       = $0139 =   313  MCODE   monz80.asm:235
-cmd          = $00F9 =   249  MCODE   monz80.asm:189
-cmd1         = $0101 =   257  MCODE   monz80.asm:194
-cmd2         = $0117 =   279  MCODE   monz80.asm:212
-cmd3         = $011C =   284  MCODE   monz80.asm:217
-dis1         = $052A =  1322  MCODE   monz80.asm:882
-dis2         = $0538 =  1336  MCODE   monz80.asm:889
-dis3         = $0548 =  1352  MCODE   monz80.asm:896
-dis4         = $0553 =  1363  MCODE   monz80.asm:902
-dis5         = $055C =  1372  MCODE   monz80.asm:906
-dis7         = $056E =  1390  MCODE   monz80.asm:915
-dis8         = $0579 =  1401  MCODE   monz80.asm:921
-disa1        = $059E =  1438  MCODE   monz80.asm:944
-disa10       = $0612 =  1554  MCODE   monz80.asm:1024
-disa100      = $06A1 =  1697  MCODE   monz80.asm:1112
-disa11       = $0623 =  1571  MCODE   monz80.asm:1035
-disa12       = $062C =  1580  MCODE   monz80.asm:1040
-disa13       = $0635 =  1589  MCODE   monz80.asm:1045
-disa14       = $0646 =  1606  MCODE   monz80.asm:1055
-disa14a      = $0653 =  1619  MCODE   monz80.asm:1063
-disa15       = $0661 =  1633  MCODE   monz80.asm:1072
-disa15a      = $067E =  1662  MCODE   monz80.asm:1091
-disa16       = $0682 =  1666  MCODE   monz80.asm:1094
-disa17       = $068B =  1675  MCODE   monz80.asm:1099
-disa18       = $0699 =  1689  MCODE   monz80.asm:1108
-disa2        = $05A6 =  1446  MCODE   monz80.asm:951
-disa3        = $05AD =  1453  MCODE   monz80.asm:958
-disa4        = $05B7 =  1463  MCODE   monz80.asm:967
-disa5        = $05BB =  1467  MCODE   monz80.asm:969
-disa6        = $05CB =  1483  MCODE   monz80.asm:978
-disa61       = $05D0 =  1488  MCODE   monz80.asm:980
-disa62       = $05D9 =  1497  MCODE   monz80.asm:987
-disa63       = $05E6 =  1510  MCODE   monz80.asm:995
-disa7        = $05E9 =  1513  MCODE   monz80.asm:998
-disa8        = $05F5 =  1525  MCODE   monz80.asm:1006
-disa81       = $05FC =  1532  MCODE   monz80.asm:1009
-disa9        = $0607 =  1543  MCODE   monz80.asm:1017
-disa900      = $06A9 =  1705  MCODE   monz80.asm:1116
-disa91       = $060D =  1549  MCODE   monz80.asm:1021
-disass       = $057C =  1404  MCODE   monz80.asm:928
-disc1        = $0210 =   528  MCODE   monz80.asm:384
-dump1        = $0221 =   545  MCODE   monz80.asm:394
-dump2        = $022D =   557  MCODE   monz80.asm:399
-dump3        = $0245 =   581  MCODE   monz80.asm:412
-edit1        = $030D =   781  MCODE   monz80.asm:525
-edit2        = $0313 =   787  MCODE   monz80.asm:527
-edit3        = $0325 =   805  MCODE   monz80.asm:535
-edit4        = $032D =   813  MCODE   monz80.asm:540
-edit5        = $0336 =   822  MCODE   monz80.asm:544
-edit6        = $033A =   826  MCODE   monz80.asm:546
-edit7        = $0346 =   838  MCODE   monz80.asm:552
-exjr1        = $07A6 =  1958  MCODE   monz80.asm:1285
-fill1        = $035E =   862  MCODE   monz80.asm:567
-geta1        = $0483 =  1155  MCODE   monz80.asm:768
-getc1        = $0467 =  1127  MCODE   monz80.asm:749
-getc2        = $0474 =  1140  MCODE   monz80.asm:757
-getc3        = $047E =  1150  MCODE   monz80.asm:762
-geth1        = $043A =  1082  MCODE   monz80.asm:712
-help1        = $019E =   414  MCODE   monz80.asm:317
-help2        = $01A3 =   419  MCODE   monz80.asm:319
-help3        = $01B2 =   434  MCODE   monz80.asm:328
-help4        = $01C1 =   449  MCODE   monz80.asm:334
-imbrk1       = $01DB =   475  MCODE   monz80.asm:350
-imbrk2       = $01E8 =   488  MCODE   monz80.asm:361
-ixnib1       = $06C4 =  1732  MCODE   monz80.asm:1133
-lfcr1        = $04E6 =  1254  MCODE   monz80.asm:835
-lfcr2        = $04F5 =  1269  MCODE   monz80.asm:841
-lfcr4        = $04FC =  1276  MCODE   monz80.asm:844
-load1        = $03BF =   959  MCODE   monz80.asm:629
-putc1        = $0FAE =  4014  _u68B50 monz80.asm:1724
-rdump1       = $0295 =   661  MCODE   monz80.asm:465
-rembrk1      = $0062 =    98  MCODE   monz80.asm:140
-rembrk2      = $006C =   108  MCODE   monz80.asm:149
-setb1        = $03AF =   943  MCODE   monz80.asm:617
-step1        = $06F7 =  1783  MCODE   monz80.asm:1168
-step2        = $0702 =  1794  MCODE   monz80.asm:1178
-step3        = $0729 =  1833  MCODE   monz80.asm:1196
-uAF          = $7800 = 30720  MDATA   monz80.asm:71
-uBC          = $7802 = 30722  MDATA   monz80.asm:72
-uDE          = $7804 = 30724  MDATA   monz80.asm:73
-uHL          = $7806 = 30726  MDATA   monz80.asm:74
-uIX          = $7808 = 30728  MDATA   monz80.asm:75
-uIY          = $780A = 30730  MDATA   monz80.asm:76
-uPC          = $780C = 30732  MDATA   monz80.asm:77
-uSP          = $780E = 30734  MDATA   monz80.asm:78
-wrnib1       = $04C9 =  1225  MCODE   monz80.asm:819
-wrpri1       = $0264 =   612  MCODE   monz80.asm:433
-xACM         = $008B =   139  MCODE   monz80.asm:1403
-xADC         = $0095 =   149  MCODE   monz80.asm:1423
-xADD         = $0094 =   148  MCODE   monz80.asm:1421
-xAF          = $0090 =   144  MCODE   monz80.asm:1413
-xAND         = $0098 =   152  MCODE   monz80.asm:1429
-xBC          = $0081 =   129  MCODE   monz80.asm:1383 (unused)
-xBCI         = $0086 =   134  MCODE   monz80.asm:1393
-xBIT         = $00A5 =   165  MCODE   monz80.asm:1455
-xCALL        = $00A1 =   161  MCODE   monz80.asm:1447
-xCMA         = $008C =   140  MCODE   monz80.asm:1405
-xCP          = $0093 =   147  MCODE   monz80.asm:1419
-xDE          = $0082 =   130  MCODE   monz80.asm:1385
-xDEC         = $009C =   156  MCODE   monz80.asm:1437
-xDEI         = $0087 =   135  MCODE   monz80.asm:1395
-xEX          = $0091 =   145  MCODE   monz80.asm:1415
-xHL          = $0083 =   131  MCODE   monz80.asm:1387
-xHLI         = $0088 =   136  MCODE   monz80.asm:1397
-xIN          = $00A3 =   163  MCODE   monz80.asm:1451
-xINC         = $009B =   155  MCODE   monz80.asm:1435
-xIX          = $0084 =   132  MCODE   monz80.asm:1389
-xIXI         = $0089 =   137  MCODE   monz80.asm:1399
-xIY          = $0085 =   133  MCODE   monz80.asm:1391
-xIYI         = $008A =   138  MCODE   monz80.asm:1401
-xJP          = $009F =   159  MCODE   monz80.asm:1443
-xJR          = $00A0 =   160  MCODE   monz80.asm:1445
-xLD          = $0080 =   128  MCODE   monz80.asm:1381
-xLDx         = $0092 =   146  MCODE   monz80.asm:1417
-xOR          = $0099 =   153  MCODE   monz80.asm:1431
-xOUT         = $00A4 =   164  MCODE   monz80.asm:1453
-xPOP         = $008F =   143  MCODE   monz80.asm:1411
-xPUSH        = $008E =   142  MCODE   monz80.asm:1409
-xRES         = $00A7 =   167  MCODE   monz80.asm:1459
-xRET         = $00A2 =   162  MCODE   monz80.asm:1449
-xRL          = $009D =   157  MCODE   monz80.asm:1439
-xRR          = $009E =   158  MCODE   monz80.asm:1441
-xSBC         = $0097 =   151  MCODE   monz80.asm:1427
-xSET         = $00A6 =   166  MCODE   monz80.asm:1457
-xSP          = $008D =   141  MCODE   monz80.asm:1407
-xSUB         = $0096 =   150  MCODE   monz80.asm:1425
-xXOR         = $009A =   154  MCODE   monz80.asm:1433
+BDUMP           = $0366 =   870  MCODE      monz80.asm:575
+BEGIN           = $0074 =   116  MCODE      monz80.asm:156
+BRKP1           = $0040 =    64  MCODE      monz80.asm:122 (unused)
+BRKPT           = $0038 =    56  MCODE      monz80.asm:118 (unused)
+BRKTAB          = $7811 = 30737  MDATA      monz80.asm:88
+BUFFER          = $782D = 30765  MDATA      monz80.asm:92
+CAF             = $02CD =   717  MCODE      monz80.asm:489
+CBC             = $02D2 =   722  MCODE      monz80.asm:491
+CCTAB           = $0850 =  2128  MCODE      monz80.asm:1371
+CDE             = $02D7 =   727  MCODE      monz80.asm:493
+CHL             = $02DC =   732  MCODE      monz80.asm:495
+CHLDE           = $0255 =   597  MCODE      monz80.asm:422
+CHREG           = $02F3 =   755  MCODE      monz80.asm:505
+CIX             = $02E1 =   737  MCODE      monz80.asm:497
+CIY             = $02E6 =   742  MCODE      monz80.asm:499
+CLRSER          = $0136 =   310  MCODE      monz80.asm:234
+CMDRET          = $012F =   303  MCODE      monz80.asm:230
+CPC             = $02EB =   747  MCODE      monz80.asm:501
+CSP             = $02F0 =   752  MCODE      monz80.asm:503
+CTABLE          = $0146 =   326  MCODE      monz80.asm:268
+DISASM          = $0519 =  1305  MCODE      monz80.asm:872
+DISCMD          = $020D =   525  MCODE      monz80.asm:383
+DLEOF           = $042F =  1071  MCODE      monz80.asm:702
+DLERR           = $0431 =  1073  MCODE      monz80.asm:705
+DLINT           = $0406 =  1030  MCODE      monz80.asm:674
+DLINT1          = $041F =  1055  MCODE      monz80.asm:690
+DLMOT           = $03D3 =   979  MCODE      monz80.asm:642 (unused)
+DLREC           = $03C8 =   968  MCODE      monz80.asm:636
+DMOT1           = $03F5 =  1013  MCODE      monz80.asm:661
+DTAB            = $0910 =  2320  MCODE      monz80.asm:1476
+DTABCB          = $0ACF =  2767  MCODE      monz80.asm:1547
+DTABDD          = $0B19 =  2841  MCODE      monz80.asm:1559
+DTABED          = $0D01 =  3329  MCODE      monz80.asm:1621
+DTABFD          = $0C0D =  3085  MCODE      monz80.asm:1590
+DUMP            = $021E =   542  MCODE      monz80.asm:393
+EDIT            = $030A =   778  MCODE      monz80.asm:524
+EFEND           = $0E0F =  3599  MCODE      monz80.asm:1674
+EFSIZE          = $0010 =    16             monz80.asm:59
+EFTAB           = $0DCF =  3535  MCODE      monz80.asm:1658
+ENTMON          = $00E7 =   231  MCODE      monz80.asm:181
+ERROR           = $0129 =   297  MCODE      monz80.asm:228
+EXCALL          = $07B1 =  1969  MCODE      monz80.asm:1296
+EXCALLC         = $07AC =  1964  MCODE      monz80.asm:1291
+EXDDP           = $0753 =  1875  MCODE      monz80.asm:1222
+EXDJNZ          = $0792 =  1938  MCODE      monz80.asm:1272
+EXFDP           = $075F =  1887  MCODE      monz80.asm:1230
+EXJP            = $078D =  1933  MCODE      monz80.asm:1267
+EXJPC           = $0788 =  1928  MCODE      monz80.asm:1262
+EXJPHL          = $0775 =  1909  MCODE      monz80.asm:1247
+EXJR            = $079B =  1947  MCODE      monz80.asm:1279
+EXJRC           = $077A =  1914  MCODE      monz80.asm:1252
+EXJRNC          = $077E =  1918  MCODE      monz80.asm:1254
+EXJRNZ          = $0786 =  1926  MCODE      monz80.asm:1258
+EXJRZ           = $0782 =  1922  MCODE      monz80.asm:1256
+EXRET           = $07CF =  1999  MCODE      monz80.asm:1318
+EXRETC          = $07CA =  1994  MCODE      monz80.asm:1313
+EXRST           = $076B =  1899  MCODE      monz80.asm:1238
+EXSKP           = $07C9 =  1993  MCODE      monz80.asm:1309
+FILL            = $0354 =   852  MCODE      monz80.asm:563
+GETADR          = $0480 =  1152  MCODE      monz80.asm:767
+GETADRD         = $049D =  1181  MCODE      monz80.asm:787
+GETC            = $0462 =  1122  MCODE      monz80.asm:746
+GETHEX          = $0434 =  1076  MCODE      monz80.asm:710
+GETHEXC         = $0447 =  1095  MCODE      monz80.asm:724
+GETNIB          = $044D =  1101  MCODE      monz80.asm:730
+GETRANG         = $0489 =  1161  MCODE      monz80.asm:775
+GO              = $01C5 =   453  MCODE      monz80.asm:340
+GOHL            = $07C6 =  1990  MCODE      monz80.asm:1308
+GOHLS           = $07B4 =  1972  MCODE      monz80.asm:1298 (unused)
+GOSTEP          = $06CD =  1741  MCODE      monz80.asm:1144
+GOSTEP1         = $06D5 =  1749  MCODE      monz80.asm:1148
+HELP            = $019B =   411  MCODE      monz80.asm:316
+HTEXT           = $0E0F =  3599  MCODE      monz80.asm:1678
+INPORT          = $0269 =   617  MCODE      monz80.asm:438
+IOCTL           = $7810 = 30736  MDATA      monz80.asm:87
+IOINIT          = $0F96 =  3990  _u68B50    monz80.asm:1703
+IXBYTE          = $06AE =  1710  MCODE      monz80.asm:1121
+IXNIB           = $06BB =  1723  MCODE      monz80.asm:1128
+LFCR            = $04D0 =  1232  MCODE      monz80.asm:826
+LOAD            = $03BA =   954  MCODE      monz80.asm:627
+MCODE           = $0000 =     0  MCODE      monz80.asm:98 (unused)
+MCODE_end       = $0F96 =  3990  MCODE      monz80.asm:98 (unused)
+MCODE_size      = $0F96 =  3990  MCODE      monz80.asm:98 (unused)
+MDATA           = $7800 = 30720  MDATA      monz80.asm:68
+MDATA_end       = $7860 = 30816  MDATA      monz80.asm:68 (unused)
+MDATA_size      = $0060 =    96  MDATA      monz80.asm:68 (unused)
+MONSTK          = $785F = 30815  MDATA      monz80.asm:93
+OUTPORT         = $0275 =   629  MCODE      monz80.asm:446
+PUTC            = $0FAD =  4013  _u68B50    monz80.asm:1723
+RDUMP           = $028F =   655  MCODE      monz80.asm:463
+REGTAB          = $0800 =  2048  MCODE      monz80.asm:1349
+RNTEXT          = $02AC =   684  MCODE      monz80.asm:480
+RPTAB           = $0820 =  2080  MCODE      monz80.asm:1358
+RPTABX          = $0830 =  2096  MCODE      monz80.asm:1362
+RPTABY          = $0840 =  2112  MCODE      monz80.asm:1366
+SETBRK          = $039A =   922  MCODE      monz80.asm:605
+SPACE           = $0506 =  1286  MCODE      monz80.asm:851
+STEP            = $0282 =   642  MCODE      monz80.asm:455
+STEPRET         = $072E =  1838  MCODE      monz80.asm:1202
+TABTAB          = $0870 =  2160  MCODE      monz80.asm:1380
+TEMP            = $7829 = 30761  MDATA      monz80.asm:89
+TEMP1           = $782B = 30763  MDATA      monz80.asm:90
+TEMP2           = $782C = 30764  MDATA      monz80.asm:91
+TESTC           = $0FA5 =  4005  _u68B50    monz80.asm:1715
+TESTCC          = $07E0 =  2016  MCODE      monz80.asm:1330
+UCODE           = $7860 = 30816  UCODE      monz80.asm:65
+UCODE_end       = $7860 = 30816  UCODE      monz80.asm:65 (unused)
+UCODE_size      = $0000 =     0  UCODE      monz80.asm:65 (unused)
+USTACK          = $FFFF = 65535  USTACK     monz80.asm:62
+USTACK_end      = $FFFF = 65535  USTACK     monz80.asm:62 (unused)
+USTACK_size     = $0000 =     0  USTACK     monz80.asm:62 (unused)
+WRADDR          = $04AE =  1198  MCODE      monz80.asm:798
+WRBYTE          = $04B3 =  1203  MCODE      monz80.asm:804
+WRMSG           = $050B =  1291  MCODE      monz80.asm:856
+WRNIB           = $04C0 =  1216  MCODE      monz80.asm:814
+WRPRINT         = $025B =   603  MCODE      monz80.asm:429
+WRSTR           = $0510 =  1296  MCODE      monz80.asm:862
+_BIOSCalls      = $0FB8 =  4024  _BIOSCalls monz80.asm:1731 (unused)
+_BIOSCalls_end  = $0FC1 =  4033  _BIOSCalls monz80.asm:1731 (unused)
+_BIOSCalls_size = $0009 =     9  _BIOSCalls monz80.asm:1731 (unused)
+_putc           = $0FBE =  4030  _BIOSCalls monz80.asm:1736 (unused)
+_testc          = $0FBB =  4027  _BIOSCalls monz80.asm:1735 (unused)
+_u68B50         = $0F96 =  3990  _u68B50    monz80.asm:1696 (unused)
+_u68B50_end     = $0FB8 =  4024  _u68B50    monz80.asm:1696 (unused)
+_u68B50_size    = $0022 =    34  _u68B50    monz80.asm:1696 (unused)
+_warmst         = $0FB8 =  4024  _BIOSCalls monz80.asm:1734 (unused)
+bdump1          = $036B =   875  MCODE      monz80.asm:577
+bdump2          = $0390 =   912  MCODE      monz80.asm:596
+bdump3          = $0393 =   915  MCODE      monz80.asm:597
+begin1          = $0080 =   128  MCODE      monz80.asm:161
+clrse1          = $0139 =   313  MCODE      monz80.asm:235
+cmd             = $00F9 =   249  MCODE      monz80.asm:189
+cmd1            = $0101 =   257  MCODE      monz80.asm:194
+cmd2            = $0117 =   279  MCODE      monz80.asm:212
+cmd3            = $011C =   284  MCODE      monz80.asm:217
+dis1            = $052A =  1322  MCODE      monz80.asm:882
+dis2            = $0538 =  1336  MCODE      monz80.asm:889
+dis3            = $0548 =  1352  MCODE      monz80.asm:896
+dis4            = $0553 =  1363  MCODE      monz80.asm:902
+dis5            = $055C =  1372  MCODE      monz80.asm:906
+dis7            = $056E =  1390  MCODE      monz80.asm:915
+dis8            = $0579 =  1401  MCODE      monz80.asm:921
+disa1           = $059E =  1438  MCODE      monz80.asm:944
+disa10          = $0612 =  1554  MCODE      monz80.asm:1024
+disa100         = $06A1 =  1697  MCODE      monz80.asm:1112
+disa11          = $0623 =  1571  MCODE      monz80.asm:1035
+disa12          = $062C =  1580  MCODE      monz80.asm:1040
+disa13          = $0635 =  1589  MCODE      monz80.asm:1045
+disa14          = $0646 =  1606  MCODE      monz80.asm:1055
+disa14a         = $0653 =  1619  MCODE      monz80.asm:1063
+disa15          = $0661 =  1633  MCODE      monz80.asm:1072
+disa15a         = $067E =  1662  MCODE      monz80.asm:1091
+disa16          = $0682 =  1666  MCODE      monz80.asm:1094
+disa17          = $068B =  1675  MCODE      monz80.asm:1099
+disa18          = $0699 =  1689  MCODE      monz80.asm:1108
+disa2           = $05A6 =  1446  MCODE      monz80.asm:951
+disa3           = $05AD =  1453  MCODE      monz80.asm:958
+disa4           = $05B7 =  1463  MCODE      monz80.asm:967
+disa5           = $05BB =  1467  MCODE      monz80.asm:969
+disa6           = $05CB =  1483  MCODE      monz80.asm:978
+disa61          = $05D0 =  1488  MCODE      monz80.asm:980
+disa62          = $05D9 =  1497  MCODE      monz80.asm:987
+disa63          = $05E6 =  1510  MCODE      monz80.asm:995
+disa7           = $05E9 =  1513  MCODE      monz80.asm:998
+disa8           = $05F5 =  1525  MCODE      monz80.asm:1006
+disa81          = $05FC =  1532  MCODE      monz80.asm:1009
+disa9           = $0607 =  1543  MCODE      monz80.asm:1017
+disa900         = $06A9 =  1705  MCODE      monz80.asm:1116
+disa91          = $060D =  1549  MCODE      monz80.asm:1021
+disass          = $057C =  1404  MCODE      monz80.asm:928
+disc1           = $0210 =   528  MCODE      monz80.asm:384
+dump1           = $0221 =   545  MCODE      monz80.asm:394
+dump2           = $022D =   557  MCODE      monz80.asm:399
+dump3           = $0245 =   581  MCODE      monz80.asm:412
+edit1           = $030D =   781  MCODE      monz80.asm:525
+edit2           = $0313 =   787  MCODE      monz80.asm:527
+edit3           = $0325 =   805  MCODE      monz80.asm:535
+edit4           = $032D =   813  MCODE      monz80.asm:540
+edit5           = $0336 =   822  MCODE      monz80.asm:544
+edit6           = $033A =   826  MCODE      monz80.asm:546
+edit7           = $0346 =   838  MCODE      monz80.asm:552
+exjr1           = $07A6 =  1958  MCODE      monz80.asm:1285
+fill1           = $035E =   862  MCODE      monz80.asm:567
+geta1           = $0483 =  1155  MCODE      monz80.asm:768
+getc1           = $0467 =  1127  MCODE      monz80.asm:749
+getc2           = $0474 =  1140  MCODE      monz80.asm:757
+getc3           = $047E =  1150  MCODE      monz80.asm:762
+geth1           = $043A =  1082  MCODE      monz80.asm:712
+help1           = $019E =   414  MCODE      monz80.asm:317
+help2           = $01A3 =   419  MCODE      monz80.asm:319
+help3           = $01B2 =   434  MCODE      monz80.asm:328
+help4           = $01C1 =   449  MCODE      monz80.asm:334
+imbrk1          = $01DB =   475  MCODE      monz80.asm:350
+imbrk2          = $01E8 =   488  MCODE      monz80.asm:361
+ixnib1          = $06C4 =  1732  MCODE      monz80.asm:1133
+lfcr1           = $04E6 =  1254  MCODE      monz80.asm:835
+lfcr2           = $04F5 =  1269  MCODE      monz80.asm:841
+lfcr4           = $04FC =  1276  MCODE      monz80.asm:844
+load1           = $03BF =   959  MCODE      monz80.asm:629
+putc1           = $0FAE =  4014  _u68B50    monz80.asm:1724
+rdump1          = $0295 =   661  MCODE      monz80.asm:465
+rembrk1         = $0062 =    98  MCODE      monz80.asm:140
+rembrk2         = $006C =   108  MCODE      monz80.asm:149
+setb1           = $03AF =   943  MCODE      monz80.asm:617
+step1           = $06F7 =  1783  MCODE      monz80.asm:1168
+step2           = $0702 =  1794  MCODE      monz80.asm:1178
+step3           = $0729 =  1833  MCODE      monz80.asm:1196
+uAF             = $7800 = 30720  MDATA      monz80.asm:71
+uBC             = $7802 = 30722  MDATA      monz80.asm:72
+uDE             = $7804 = 30724  MDATA      monz80.asm:73
+uHL             = $7806 = 30726  MDATA      monz80.asm:74
+uIX             = $7808 = 30728  MDATA      monz80.asm:75
+uIY             = $780A = 30730  MDATA      monz80.asm:76
+uPC             = $780C = 30732  MDATA      monz80.asm:77
+uSP             = $780E = 30734  MDATA      monz80.asm:78
+wrnib1          = $04C9 =  1225  MCODE      monz80.asm:819
+wrpri1          = $0264 =   612  MCODE      monz80.asm:433
+xACM            = $008B =   139  MCODE      monz80.asm:1403
+xADC            = $0095 =   149  MCODE      monz80.asm:1423
+xADD            = $0094 =   148  MCODE      monz80.asm:1421
+xAF             = $0090 =   144  MCODE      monz80.asm:1413
+xAND            = $0098 =   152  MCODE      monz80.asm:1429
+xBC             = $0081 =   129  MCODE      monz80.asm:1383 (unused)
+xBCI            = $0086 =   134  MCODE      monz80.asm:1393
+xBIT            = $00A5 =   165  MCODE      monz80.asm:1455
+xCALL           = $00A1 =   161  MCODE      monz80.asm:1447
+xCMA            = $008C =   140  MCODE      monz80.asm:1405
+xCP             = $0093 =   147  MCODE      monz80.asm:1419
+xDE             = $0082 =   130  MCODE      monz80.asm:1385
+xDEC            = $009C =   156  MCODE      monz80.asm:1437
+xDEI            = $0087 =   135  MCODE      monz80.asm:1395
+xEX             = $0091 =   145  MCODE      monz80.asm:1415
+xHL             = $0083 =   131  MCODE      monz80.asm:1387
+xHLI            = $0088 =   136  MCODE      monz80.asm:1397
+xIN             = $00A3 =   163  MCODE      monz80.asm:1451
+xINC            = $009B =   155  MCODE      monz80.asm:1435
+xIX             = $0084 =   132  MCODE      monz80.asm:1389
+xIXI            = $0089 =   137  MCODE      monz80.asm:1399
+xIY             = $0085 =   133  MCODE      monz80.asm:1391
+xIYI            = $008A =   138  MCODE      monz80.asm:1401
+xJP             = $009F =   159  MCODE      monz80.asm:1443
+xJR             = $00A0 =   160  MCODE      monz80.asm:1445
+xLD             = $0080 =   128  MCODE      monz80.asm:1381
+xLDx            = $0092 =   146  MCODE      monz80.asm:1417
+xOR             = $0099 =   153  MCODE      monz80.asm:1431
+xOUT            = $00A4 =   164  MCODE      monz80.asm:1453
+xPOP            = $008F =   143  MCODE      monz80.asm:1411
+xPUSH           = $008E =   142  MCODE      monz80.asm:1409
+xRES            = $00A7 =   167  MCODE      monz80.asm:1459
+xRET            = $00A2 =   162  MCODE      monz80.asm:1449
+xRL             = $009D =   157  MCODE      monz80.asm:1439
+xRR             = $009E =   158  MCODE      monz80.asm:1441
+xSBC            = $0097 =   151  MCODE      monz80.asm:1427
+xSET            = $00A6 =   166  MCODE      monz80.asm:1457
+xSP             = $008D =   141  MCODE      monz80.asm:1407
+xSUB            = $0096 =   150  MCODE      monz80.asm:1425
+xXOR            = $009A =   154  MCODE      monz80.asm:1433
 
 
-total time: 0.0083 sec.
+total time: 0.0103 sec.
 no errors

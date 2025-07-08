@@ -1728,4 +1728,12 @@ putc1	IN	 A,(80h)	;Read status
         OUT	 (81h),A	;Write to data port
     RET
 
+#code _BIOSCalls
+;; siple jump table for BIOS calls
+
+_warmst JP   ENTMON		; warm entry point of monitor (returns to monitor)
+_testc 	JP   TESTC		; tst for ch, ret a=0 no ch or a=ch 
+_putc   JP   PUTC		; put character to console
+
+
 #end
