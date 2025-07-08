@@ -1,6 +1,6 @@
                         ; --------------------------------------
                         ; zasm: assemble "monz80.asm"
-                        ; date: 2025-07-06 22:15:59
+                        ; date: 2025-07-08 10:00:29
                         ; --------------------------------------
 
 
@@ -33,6 +33,29 @@
                         ;; entries below, any commented out EAQUATES or ORG statements, are 
                         ;; replaced by proper segments.
                         
+                        ;; code segments:
+                        
+                        ;;	USTACK - the user stack (top of RAM) 
+                        ;;	UCODE - the user code area (where the user program is loaded) 
+                        ;;	MDATA - the monitor data area (where the monitor variables are stored)
+                        ;;	MCODE - the monitor code
+                        ;;	_u68B50 - the 68B50 UART driver (found at bottom of this file)
+                        
+                        ;; formatting guidelines:
+                        ;; I tried to keep the original formatting where I could, but David's original 
+                        ;; IDE had interesting formatting, as well as was written for DOS.  VSCode is
+                        ;; its own animal when it comes to formatting legacy code. 
+                        ;; Here is what I came up with:
+                        
+                        ;;{COL 0 LABEL} [<TAB>][<TAB>] [COL 9 2CH OPCODE] [<SP>][<SP>][<SP>] {COL 14 OPERAND} [<TAB>][<TAB>][<TAB>] {COL 29 COMMENT}
+                        ;;{COL 0 LABEL} [<TAB>][<TAB>] [COL 9 3CH OPCODE] [<SP>][<SP>]       {COL 14 OPERAND} [<TAB>][<TAB>][<TAB>] {COL 29 COMMENT}
+                        ;;{COL 0 LABEL} [<TAB>][<TAB>] [COL 9 4CH OPCODE] [<SP>]             {COL 14 OPERAND} [<TAB>][<TAB>][<TAB>] {COL 29 COMMENT}
+                        
+                        ;; label names do not have a ':' though new ones may have a '_' at the start.
+                        ;; ASMZ80 does not support case senitive labels, so a few adaptations had to be made, verified by mostly relitive jump machine code 
+                        ;; in the listing, or by verifying the binary output.
+                        
+                        ;; the original formatting was left in a 'state' by vscode, so thats made making automation scripts very difficult, so I am doing it by hand.
                         
                         ;; zasm preproc:
                         #charset ascii 
@@ -42,121 +65,121 @@
 0010:                   EFSIZE  EQU (EFEND-EFTAB)/4
                         
                         ;; top of stack (without window for banking)
-FFFF:                   #data USTACK, $FFFF 	; user stack address (top of RAM)
+FFFF:                   #data USTACK, $FFFF			; user stack address (top of RAM)
                         
                         ;; user code area is here, below is the ROM Start address.
-7860:                   #data UCODE, $7860 		; user code area starts here and runs into the stack
+7860:                   #data UCODE, $7860			; user code area starts here and runs into the stack
                         
                         ;; monitor data area is here
-7800:                   #data MDATA, $7800, $60	; monitor requires 60 bytes of ram for variable
+7800:                   #data MDATA, $7800, $60		; monitor requires 60 bytes of ram for variable
                         
                         ;; User registers (saved while monitor active)
-7800: 0000              uAF	DS	2		;User AF register
-7802: 0000              uBC	DS	2		;User BC register
-7804: 0000              uDE	DS	2		;User DE register
-7806: 0000              uHL	DS	2		;User HL register
-7808: 0000              uIX	DS	2		;User IX register
-780A: 0000              uIY	DS	2		;User IY register
-780C: 0000              uPC	DS	2		;User PC register
-780E: 0000              uSP	DS	2		;User SP register
+7800: 0000              uAF		DS   2				;User AF register
+7802: 0000              uBC		DS   2				;User BC register
+7804: 0000              uDE		DS   2				;User DE register
+7806: 0000              uHL		DS   2				;User HL register
+7808: 0000              uIX		DS   2				;User IX register
+780A: 0000              uIY		DS   2				;User IY register
+780C: 0000              uPC		DS   2				;User PC register
+780E: 0000              uSP		DS   2				;User SP register
                         
                         ;; I/O control byte:
                         
-                         ;  7/80 = Output paused
-                         ;  6/40 = Echo input
-                         ;  5/20 = Convert to upper case
-                         ;  4/10 = Clear input stream first
+                        ;  7/80 = Output paused
+                        ;  6/40 = Echo input
+                        ;  5/20 = Convert to upper case
+                        ;  4/10 = Clear input stream first
                         
-7810: 00                IOCTL	DS	1		;I/O control byte
-7811: 00000000          BRKTAB	DS	8*3		;Breakpoint table
+7810: 00                IOCTL	DS   1				;I/O control byte
+7811: 00000000          BRKTAB	DS   8*3			;Breakpoint table
 7815: 00...             
-7829: 0000              TEMP	DS	2		;Temporary storage
-782B: 00                TEMP1	DS	1		;Temporary storage
-782C: 00                TEMP2	DS	1		;Temporary storage
-782D: 00000000          BUFFER	DS	50		;Disassembler output buffer
+7829: 0000              TEMP	DS   2				;Temporary storage
+782B: 00                TEMP1	DS   1				;Temporary storage
+782C: 00                TEMP2	DS   1				;Temporary storage
+782D: 00000000          BUFFER	DS   50				;Disassembler output buffer
 7831: 00...             
-785F:                   MONSTK	EQU	$		;Some free space
+785F:                   MONSTK	EQU  $				;Some free space
                         
                         ;
                         ; Monitor Code
                         
 0000:                   #code MCODE, $0000
                         
-0000: C37400   [10]     	JP	BEGIN		;Start up monitor
-                        	ORG	1*8			;RST 1
-0008: C36878   [20]     	JP	UCODE+(1*8)	;Execute user code
-                        	ORG	2*8			;RST 2
-0010: C37078   [30]     	JP	UCODE+(2*8)	;Execute user code
-                        	ORG	3*8			;RST 3
-0018: C37878   [40]     	JP	UCODE+(3*8)	;Execute user code
-                        	ORG	4*8			;RST 4
-0020: C38078   [50]     	JP	UCODE+(4*8)	;Execute user code
-                        	ORG	5*8			;RST 5
-0028: C38878   [60]     	JP	UCODE+(5*8)	;Execute user code
-                        	ORG	6*8			;RST 6
-0030: C39078   [70]     	JP	UCODE+(6*8)	;Execute user code
-                        	ORG	7*8			;RST 7 - Breakpoint
+0000: C37400   [10]     		JP	 BEGIN			;Start up monitor
+                        		ORG	 1*8			;RST 1
+0008: C36878   [20]     		JP	 UCODE+(1*8)	;Execute user code
+                        		ORG	 2*8			;RST 2
+0010: C37078   [30]     		JP   UCODE+(2*8)	;Execute user code
+                        		ORG	 3*8			;RST 3
+0018: C37878   [40]     		JP	 UCODE+(3*8)	;Execute user code
+                        		ORG	 4*8			;RST 4
+0020: C38078   [50]     		JP	 UCODE+(4*8)	;Execute user code
+                        		ORG	 5*8			;RST 5
+0028: C38878   [60]     		JP	 UCODE+(5*8)	;Execute user code
+                        		ORG	 6*8			;RST 6
+0030: C39078   [70]     		JP	 UCODE+(6*8)	;Execute user code
+                        		ORG	 7*8			;RST 7 - Breakpoint
                         ;
                         ; Breakpoint encountered - save registers, replace breakpoints
                         ;
                         
-0038: 220678   [16]     BRKPT	LD	(uHL),HL	;Save HL
-003B: E1       [26]     		POP	HL			;Get PC
-003C: 2B       [32]     		DEC	HL			;Backup to RST instruction
-003D: 220C78   [48]     		LD	(uPC),HL	;Save PC
-0040: F5       [11]     BRKP1	PUSH	AF		;Get AF
-0041: E1       [21]     		POP	HL			;Copy
-0042: 220078   [37]     		LD	(uAF),HL	;Save AF
-0045: 210000   [47]     		LD	HL,0		;Get 0
-0048: 39       [58]     		ADD	HL,SP		;Get SP
-0049: 220E78   [74]     		LD	(uSP),HL	;Save SP
-004C: EB       [78]     		EX	DE,HL		;Get DE
-004D: 220478   [94]     		LD	(uDE),HL	;Save DE
-0050: 60       [98]     		LD	H,B			;Get B
-0051: 69       [102]    		LD	L,C			;Get C
-0052: 220278   [118]    		LD	(uBC),HL	;Save BC
-0055: DD220878 [138]    		LD	(uIX),IX	;Save IX
-0059: FD220A78 [158]    		LD	(uIY),IY	;Save IY
+0038: 220678   [16]     BRKPT	LD   (uHL),HL		;Save HL
+003B: E1       [26]     		POP  HL				;Get PC
+003C: 2B       [32]     		DEC	 HL				;Backup to RST instruction
+003D: 220C78   [48]     		LD	 (uPC),HL		;Save PC
+0040: F5       [11]     BRKP1	PUSH AF		    	;Get AF
+0041: E1       [21]     		POP	 HL				;Copy
+0042: 220078   [37]     		LD	 (uAF),HL		;Save AF
+0045: 210000   [47]     		LD	 HL,0			;Get 0
+0048: 39       [58]     		ADD	 HL,SP			;Get SP
+0049: 220E78   [74]     		LD	 (uSP),HL		;Save SP
+004C: EB       [78]     		EX	 DE,HL			;Get DE
+004D: 220478   [94]     		LD	 (uDE),HL		;Save DE
+0050: 60       [98]     		LD	 H,B			;Get B
+0051: 69       [102]    		LD	 L,C			;Get C
+0052: 220278   [118]    		LD	 (uBC),HL		;Save BC
+0055: DD220878 [138]    		LD	 (uIX),IX		;Save IX
+0059: FD220A78 [158]    		LD	 (uIY),IY		;Save IY
                         
                         ;; Remove any active breakpoints
                         
-005D: 211178   [168]    		LD	HL,BRKTAB	;Point to breakpoint table
-0060: 0608     [175]    		LD	B,8			;Total of 8 breakpoints
-0062: 5E       [ 7]     rembrk1	LD	E,(HL)		;Get LOW address
-0063: 23       [13]     		INC	HL			;Skip to next
-0064: 56       [20]     		LD	D,(HL)		;Get HIGH address
-0065: 23       [26]     		INC	HL			;Skip to next
-0066: 7A       [30]     		LD	A,D			;Get HIGH
-0067: B5       [34]     		OR	L			;Test with LOW
-0068: 2802     [41|46]  		JR	Z,rembrk2	;No breakpoint here
-006A: 7E       [48]     		LD	A,(HL)		;Get opcode
-006B: 12       [55]     		LD	(DE),A		;Resave opcode value
-006C: 23       [ 6]     rembrk2	INC	HL			;Skip to next
-006D: 10F3     [14|19]  		DJNZ	rembrk1	;Remove them all
-006F: CD8F02   [31]     		CALL	RDUMP	;Display registers
-0072: 1873     [43]     		JR		ENTMON	;Enter monitor
+005D: 211178   [168]    		LD   HL,BRKTAB		;Point to breakpoint table
+0060: 0608     [175]    		LD   B,8			;Total of 8 breakpoints
+0062: 5E       [ 7]     rembrk1	LD   E,(HL)			;Get LOW address
+0063: 23       [13]     		INC  HL				;Skip to next
+0064: 56       [20]     		LD	 D,(HL)			;Get HIGH address
+0065: 23       [26]     		INC	 HL				;Skip to next
+0066: 7A       [30]     		LD	 A,D			;Get HIGH
+0067: B5       [34]     		OR	 L				;Test with LOW
+0068: 2802     [41|46]  		JR	 Z,rembrk2		;No breakpoint here
+006A: 7E       [48]     		LD	 A,(HL)			;Get opcode
+006B: 12       [55]     		LD	 (DE),A			;Resave opcode value
+006C: 23       [ 6]     rembrk2	INC	 HL				;Skip to next
+006D: 10F3     [14|19]  		DJNZ rembrk1		;Remove them all
+006F: CD8F02   [31]     		CALL RDUMP	    	;Display registers
+0072: 1873     [43]     		JR	 ENTMON			;Enter monitor
                         
                         ;; Cold start entry point
                         
-0074: 315F78   [10]     BEGIN	LD	SP,MONSTK	;Set initial stack
-0077: CD960F   [27]     		CALL	IOINIT	;Initialize I/O
+0074: 315F78   [10]     BEGIN	LD   SP,MONSTK		;Set initial stack
+0077: CD960F   [27]     		CALL IOINIT			;Initialize I/O
                         ; Initialize monitor memory to zero
-007A: 210078   [37]     		LD	HL,MDATA	;Point to start of monitor RAM
-007D: 112978   [47]     		LD	DE,TEMP		;End of initialized area
-0080: 3600     [10]     begin1	LD	(HL),0		;Zero 1 byte
-0082: CD5502   [27]     		CALL	CHLDE	;Perform compare
-0085: 23       [33]     		INC	HL			;Advance
-0086: 38F8     [40|45]  		JR	C,begin1	;Zero it all
+007A: 210078   [37]     		LD   HL,MDATA		;Point to start of monitor RAM
+007D: 112978   [47]     		LD   DE,TEMP		;End of initialized area
+0080: 3600     [10]     begin1	LD   (HL),0			;Zero 1 byte
+0082: CD5502   [27]     		CALL CHLDE			;Perform compare
+0085: 23       [33]     		INC  HL				;Advance
+0086: 38F8     [40|45]  		JR   C,begin1		;Zero it all
                         ; Output welcome message
-0088: CD0B05   [57]     		CALL	WRMSG	;Output message
-008B: 0A0D              		DB	$0A,$0D
-008D: 4D4F4E5A          		defm	'MONZ80 Version 1.0'
+0088: CD0B05   [57]     		CALL WRMSG			;Output message
+008B: 0A0D              		DB   $0A,$0D
+008D: 4D4F4E5A          		defm 'MONZ80 Version 1.0'
 0091: 38302056          
 0095: 65727369          
 0099: 6F6E2031          
 009D: 2E30              
-009F: 0A0D0A            		DB	$0A,$0D,$0A
-00A2: 3F434F50          		defm	'?COPY.TXT 1996-2007 Dave Dunfield'
+009F: 0A0D0A            		DB   $0A,$0D,$0A
+00A2: 3F434F50          		defm '?COPY.TXT 1996-2007 Dave Dunfield'
 00A6: 592E5458          
 00AA: 54203139          
 00AE: 39362D32          
@@ -165,82 +188,82 @@ FFFF:                   #data USTACK, $FFFF 	; user stack address (top of RAM)
 00BA: 2044756E          
 00BE: 6669656C          
 00C2: 64                
-00C3: 0A0D              		DB	$0A,$0D
-00C5: 202D2D20          		defm	' -- see COPY.TXT --.'
+00C3: 0A0D              		DB   $0A,$0D
+00C5: 202D2D20          		defm ' -- see COPY.TXT --.'
 00C9: 73656520          
 00CD: 434F5059          
 00D1: 2E545854          
 00D5: 202D2D2E          
-00D9: 0A00              		DB	$0A,0
+00D9: 0A00              		DB	 $0A,0
                         ; Set initial PC and SP
-00DB: 216078   [67]     		LD	HL,UCODE	;Get default PC
-00DE: 220C78   [83]     		LD	(uPC),HL	;Set it
-00E1: 21FFFF   [93]     		LD	HL,USTACK	;Get default SP
-00E4: 220E78   [109]    		LD	(uSP),HL	;Set it
+00DB: 216078   [67]     		LD   HL,UCODE		;Get default PC
+00DE: 220C78   [83]     		LD   (uPC),HL		;Set it
+00E1: 21FFFF   [93]     		LD   HL,USTACK		;Get default SP
+00E4: 220E78   [109]    		LD   (uSP),HL		;Set it
                         
                         ;; Warm-start of monitor
-00E7: 315F78   [10]     ENTMON	LD	SP,MONSTK		;Reset SP
-00EA: 3E60     [17]     		LD	A,%01100000		;Echo, Ucase
-00EC: 321078   [30]     		LD	(IOCTL),A		;Set I/O control
-00EF: CD0B05   [47]     		CALL	WRMSG		;Output string
-00F2: 0A0D3E00          		DB	$0A,$0D,'>',0	;Prompt string
+00E7: 315F78   [10]     ENTMON	LD   SP,MONSTK		;Reset SP
+00EA: 3E60     [17]     		LD   A,%01100000	;Echo, Ucase
+00EC: 321078   [30]     		LD   (IOCTL),A		;Set I/O control
+00EF: CD0B05   [47]     		CALL WRMSG			;Output string
+00F2: 0A0D3E00          		DB   $0A,$0D,'>',0	;Prompt string
                         ; Get command from console
-00F6: 0E00     [54]     		LD	C,0			;Clear first char
-00F8: 51       [58]     		LD	D,C			;Clear pending flag
-00F9: 41       [ 4]     cmd		LD	B,C			;Set first character
-00FA: CD6204   [21]     		CALL	GETC	;Get command character
-00FD: 4F       [25]     		LD	C,A			;Set second character
+00F6: 0E00     [54]     		LD   C,0			;Clear first char
+00F8: 51       [58]     		LD   D,C			;Clear pending flag
+00F9: 41       [ 4]     cmd		LD   B,C			;Set first character
+00FA: CD6204   [21]     		CALL GETC			;Get command character
+00FD: 4F       [25]     		LD	 C,A			;Set second character
                         ; Search for command in command table
-00FE: 214601   [35]     		LD	HL,CTABLE	;Point to command table
-0101: 79       [ 4]     cmd1	LD	A,C			;Get LAST char
-0102: BE       [11]     		CP	(HL)		;Match?
-0103: 23       [17]     		INC	HL			;Skip to next
-0104: 2011     [24|29]  		JR	NZ,cmd2		;No, try next
-0106: 78       [28]     		LD	A,B			;Get HIGH char
-0107: BE       [35]     		CP	(HL)		;Match?
-0108: 200D     [42|47]  		JR	NZ,cmd2		;No, try next
+00FE: 214601   [35]     		LD   HL,CTABLE		;Point to command table
+0101: 79       [ 4]     cmd1	LD   A,C			;Get LAST char
+0102: BE       [11]     		CP   (HL)			;Match?
+0103: 23       [17]     		INC  HL				;Skip to next
+0104: 2011     [24|29]  		JR   NZ,cmd2		;No, try next
+0106: 78       [28]     		LD   A,B			;Get HIGH char
+0107: BE       [35]     		CP   (HL)			;Match?
+0108: 200D     [42|47]  		JR   NZ,cmd2		;No, try next
                         ; We found the command - execute handler
-010A: 23       [48]     		INC	HL			;Skip second
-010B: CD0605   [65]     		CALL	SPACE	;Separator
-010E: 7E       [72]     		LD	A,(HL)		;Get LOW address
-010F: 23       [78]     		INC	HL			;Advance
-0110: 66       [85]     		LD	H,(HL)		;Get HIGH address
-0111: 6F       [89]     		LD	L,A			;Set LOW address
-0112: 012F01   [99]     		LD	BC,CMDRET	;Get return address
-0115: C5       [110]    		PUSH	BC		;Save for return
-0116: E9       [114]    		JP	(HL)		;Execute
+010A: 23       [48]     		INC  HL				;Skip second
+010B: CD0605   [65]     		CALL SPACE			;Separator
+010E: 7E       [72]     		LD   A,(HL)			;Get LOW address
+010F: 23       [78]     		INC	 HL				;Advance
+0110: 66       [85]     		LD   H,(HL)			;Get HIGH address
+0111: 6F       [89]     		LD   L,A			;Set LOW address
+0112: 012F01   [99]     		LD   BC,CMDRET		;Get return address
+0115: C5       [110]    		PUSH BC				;Save for return
+0116: E9       [114]    		JP   (HL)			;Execute
                         ; This command didn't match, check for part of two char sequence
-0117: 79       [ 4]     cmd2	LD	A,C			;Get char
-0118: BE       [11]     		CP	(HL)		;Does it match leading of 2char?
-0119: 2001     [18|23]  		JR	NZ,cmd3		;No, skip it
-011B: 14       [22]     		INC	D			;Record possibility
+0117: 79       [ 4]     cmd2	LD	A,C				;Get char
+0118: BE       [11]     		CP	(HL)			;Does it match leading of 2char?
+0119: 2001     [18|23]  		JR	NZ,cmd3			;No, skip it
+011B: 14       [22]     		INC	D				;Record possibility
                         ; Advance to next table entry
-011C: 23       [ 6]     cmd3	INC	HL		 	;Skip second
-011D: 23       [12]     		INC	HL		 	;Skip address LOW
-011E: 23       [18]     		INC	HL		 	;Skip address HIGH
-011F: 7E       [25]     		LD	A,(HL)	 	;Get character
-0120: A7       [29]     		AND	A		 	;End of table
-0121: 20DE     [36|41]  		JR	NZ,cmd1	 	;Check every entry
-0123: B0       [40]     		OR	B		 	;First time through?
-0124: 2003     [47|52]  		JR	NZ,ERROR 	;No, report error
-0126: B2       [51]     		OR	D			;Possible 2 char?
-0127: 20D0     [58|63]  		JR	NZ,cmd		;Try again (case bug fixed )
+011C: 23       [ 6]     cmd3	INC	HL		 		;Skip second
+011D: 23       [12]     		INC	HL		 		;Skip address LOW
+011E: 23       [18]     		INC	HL		 		;Skip address HIGH
+011F: 7E       [25]     		LD	A,(HL)	 		;Get character
+0120: A7       [29]     		AND	A		 		;End of table
+0121: 20DE     [36|41]  		JR	NZ,cmd1	 		;Check every entry
+0123: B0       [40]     		OR	B		 		;First time through?
+0124: 2003     [47|52]  		JR	NZ,ERROR 		;No, report error
+0126: B2       [51]     		OR	D				;Possible 2 char?
+0127: 20D0     [58|63]  		JR	NZ,cmd			;Try again (case bug fixed )
                         ; An error has occured
-0129: CD0B05   [17]     ERROR	CALL	WRMSG		;Output message
-012C: 203F00            		defm	' ?',0		;Error message
-012F: 3A1078   [13]     CMDRET	LD	A,(IOCTL)		;Get I/O control
-0132: E610     [20]     		AND	%00010000		;Clean input?
-0134: 28B1     [27|32]  		JR	Z,ENTMON		;No, leave it (case bug fixed)
+0129: CD0B05   [17]     ERROR	CALL WRMSG			;Output message
+012C: 203F00            		defm ' ?',0			;Error message
+012F: 3A1078   [13]     CMDRET	LD   A,(IOCTL)		;Get I/O control
+0132: E610     [20]     		AND  %00010000		;Clean input?
+0134: 28B1     [27|32]  		JR	 Z,ENTMON		;No, leave it (case bug fixed)
                         ; Wait for serial data to clear
-0136: 010000   [10]     CLRSER	LD	BC,0		;Reset counter
-0139: CDA50F   [17]     clrse1	CALL	TESTC		;Wait for input
-013C: A7       [21]     	AND	A		;Character ready?
-013D: 20F7     [28|33]  	JR	NZ,CLRSER	;Yes, reset
-013F: 0B       [34]     	DEC	BC		;Reduce count
-0140: 78       [38]     	LD	A,B		;Get high
-0141: B1       [42]     	OR	C		;Test for zero
-0142: 20F5     [49|54]  	JR	NZ,clrse1	;Wait for expiry
-0144: 18A1     [61]     	JR	ENTMON		;Re-enter monitor
+0136: 010000   [10]     CLRSER	LD   BC,0			;Reset counter
+0139: CDA50F   [17]     clrse1	CALL TESTC			;Wait for input
+013C: A7       [21]     		AND  A				;Character ready?
+013D: 20F7     [28|33]  		JR	 NZ,CLRSER		;Yes, reset
+013F: 0B       [34]     		DEC	 BC				;Reduce count
+0140: 78       [38]     		LD	 A,B			;Get high
+0141: B1       [42]     		OR	 C				;Test for zero
+0142: 20F5     [49|54]  		JR	 NZ,clrse1		;Wait for expiry
+0144: 18A1     [61]     		JR	 ENTMON			;Re-enter monitor
                         
                         ;; This bit was frustrating: 
                         ;; Firstly, David's ASMZ80 assembler suopports very flexible DW directives, 
@@ -266,243 +289,242 @@ FFFF:                   #data USTACK, $FFFF 	; user stack address (top of RAM)
                         ;; any qustions about this, I can elaborate -- David Collins (Z8D)
                         
                         ; Command handler table
-0146:                   CTABLE:
-0146: 4D44                  DB 'M','D'   ; Dump memory
-0148: 1E02                  DW DUMP
-014A: 4944                  DB 'I','D'   ; Disassemble memory
-014C: 0D02                  DW DISCMD
-014E: 5244                  DB 'R','D'   ; Dump registers
-0150: 8F02                  DW RDUMP
-0152: 4244                  DB 'B','D'   ; Dump breakpoints
-0154: 6603                  DW BDUMP
-0156: 5242                  DB 'R','B'   ; Set breakpoint
-0158: 9A03                  DW SETBRK
-015A: 4500                  DB 'E',0     ; Edit memory
-015C: 0A03                  DW EDIT
-015E: 4600                  DB 'F',0     ; Fill memory
-0160: 5403                  DW FILL
-0162: 4900                  DB 'I',0     ; Input from a port
-0164: 6902                  DW INPORT
-0166: 4F00                  DB 'O',0     ; Output to a port
-0168: 7502                  DW OUTPORT
-016A: 4700                  DB 'G',0     ; Go (execute)
-016C: C501                  DW GO
-016E: 5400                  DB 'T',0     ; Single-step
-0170: 8202                  DW STEP
-0172: 4C00                  DB 'L',0     ; Load HEX file
-0174: BA03                  DW LOAD
+0146: 4D44              CTABLE:	DB   'M','D'   		; Dump memory
+0148: 1E02              		DW   DUMP
+014A: 4944                  	DB   'I','D'   		; Disassemble memory
+014C: 0D02                  	DW   DISCMD
+014E: 5244                  	DB   'R','D'   		; Dump registers
+0150: 8F02                  	DW   RDUMP
+0152: 4244                  	DB   'B','D'   		; Dump breakpoints
+0154: 6603                  	DW   BDUMP
+0156: 5242                  	DB   'R','B'   		; Set breakpoint
+0158: 9A03                  	DW   SETBRK
+015A: 4500                 		DB   'E',0     		; Edit memory
+015C: 0A03                  	DW   EDIT
+015E: 4600                  	DB   'F',0     		; Fill memory
+0160: 5403                  	DW   FILL
+0162: 4900                  	DB   'I',0     		; Input from a port
+0164: 6902                  	DW   INPORT
+0166: 4F00                  	DB   'O',0     		; Output to a port
+0168: 7502                  	DW   OUTPORT
+016A: 4700                  	DB   'G',0     		; Go (execute)
+016C: C501                  	DW   GO
+016E: 5400                  	DB   'T',0     		; Single-step
+0170: 8202                  	DW   STEP
+0172: 4C00                  	DB   'L',0     		; Load HEX file
+0174: BA03                  	DW   LOAD
                             ; Register modification commands
-0176: 4641                  DB 'F','A'   ; Change AF
-0178: CD02                  DW CAF
-017A: 4342                  DB 'C','B'   ; Change BC
-017C: D202                  DW CBC
-017E: 4544                  DB 'E','D'   ; Change DE
-0180: D702                  DW CDE
-0182: 4C48                  DB 'L','H'   ; Change HL
-0184: DC02                  DW CHL
-0186: 5849                  DB 'X','I'   ; Change IX
-0188: E102                  DW CIX
-018A: 5949                  DB 'Y','I'   ; Change IY
-018C: E602                  DW CIY
-018E: 4350                  DB 'C','P'   ; Change PC
-0190: EB02                  DW CPC
-0192: 5053                  DB 'P','S'   ; Change SP
-0194: F002                  DW CSP
-0196: 3F00                  DB '?',0     ; Help output
-0198: 9B01                  DW HELP
-019A: 00                    DB 0         ; End of table marker
+0176: 4641                  	DB   'F','A'   		; Change AF
+0178: CD02                  	DW   CAF
+017A: 4342                  	DB   'C','B'   		; Change BC
+017C: D202                  	DW   CBC
+017E: 4544                  	DB   'E','D'   		; Change DE
+0180: D702                  	DW   CDE
+0182: 4C48                  	DB   'L','H'   		; Change HL
+0184: DC02                  	DW   CHL
+0186: 5849                  	DB   'X','I'   		; Change IX
+0188: E102                  	DW   CIX
+018A: 5949                  	DB   'Y','I'   		; Change IY
+018C: E602                  	DW   CIY
+018E: 4350                  	DB   'C','P'   		; Change PC
+0190: EB02                  	DW   CPC
+0192: 5053                  	DB   'P','S'   		; Change SP
+0194: F002                  	DW   CSP
+0196: 3F00                  	DB   '?',0     		; Help output
+0198: 9B01                  	DW   HELP
+019A: 00                    	DB   0         		; End of table marker
                         
                         ;
                         ; Help command
                         ;
-019B: 210F0E   [10]     HELP	LD		HL,HTEXT	;Point to help text
-019E: CDD004   [17]     help1	CALL	LFCR		;New line
-01A1: 0619     [24]     		LD		B,25		;Margin for comments
-01A3: 7E       [ 7]     help2	LD		A,(HL)		;Get data from table
-01A4: 23       [13]     		INC		HL			;Skip to next
-01A5: A7       [17]     		AND		A			;End of line?
-01A6: 2819     [24|29]  		JR		Z,help4		;Yes, stop
-01A8: FE7C     [31]     		CP		'|'			;Special case?
-01AA: 2806     [38|43]  		JR		Z,help3		;Yes, handle it
-01AC: CDAD0F   [55]     		CALL	PUTC		;Output character
-01AF: 05       [59]     		DEC		B			;Reduce count
-01B0: 18F1     [71]     		JR		help2		;Keep going
-01B2: CD0605   [17]     help3	CALL	SPACE		;Space over
-01B5: 10FB     [25|30]  		DJNZ	help3		;Do them all
-01B7: 3E2D     [32]     		LD		A,'-'		;Separator
-01B9: CDAD0F   [49]     		CALL	PUTC		;output
-01BC: CD0605   [66]     		CALL	SPACE		;Space over
-01BF: 18E2     [78]     		JR		help2		;Keep outputing (case bug fixed)
-01C1: B6       [ 7]     help4	OR		(HL)		;More data?
-01C2: 20DA     [14|19]  		JR		NZ,help1	;Keep going
+019B: 210F0E   [10]     HELP	LD   HL,HTEXT		;Point to help text
+019E: CDD004   [17]     help1	CALL LFCR			;New line
+01A1: 0619     [24]     		LD   B,25			;Margin for comments
+01A3: 7E       [ 7]     help2	LD   A,(HL)			;Get data from table
+01A4: 23       [13]     		INC  HL				;Skip to next
+01A5: A7       [17]     		AND  A				;End of line?
+01A6: 2819     [24|29]  		JR   Z,help4		;Yes, stop
+01A8: FE7C     [31]     		CP   '|'			;Special case?
+01AA: 2806     [38|43]  		JR   Z,help3		;Yes, handle it
+01AC: CDAD0F   [55]     		CALL PUTC			;Output character
+01AF: 05       [59]     		DEC  B				;Reduce count
+01B0: 18F1     [71]     		JR   help2			;Keep going
+01B2: CD0605   [17]     help3	CALL SPACE			;Space over
+01B5: 10FB     [25|30]  		DJNZ help3			;Do them all
+01B7: 3E2D     [32]     		LD   A,'-'			;Separator
+01B9: CDAD0F   [49]     		CALL PUTC			;output
+01BC: CD0605   [66]     		CALL SPACE			;Space over
+01BF: 18E2     [78]     		JR   help2			;Keep outputing (case bug fixed)
+01C1: B6       [ 7]     help4	OR   (HL)			;More data?
+01C2: 20DA     [14|19]  		JR   NZ,help1		;Keep going
 01C4: C9       [24]     		RET
                         ;
                         ; Go (execute)
                         ;
-01C5: 2A0C78   [16]     GO	LD	HL,(uPC)	;Get user PC
-01C8: 44       [20]     	LD	B,H		;Copy HIGH
-01C9: 4D       [24]     	LD	C,L		;Copy LOW
-01CA: CD9D04   [41]     	CALL	GETADRD		;Get address with default
-01CD: 220C78   [57]     	LD	(uPC),HL	;Save new user PC
-01D0: CDD004   [74]     	CALL	LFCR		;New line
-01D3: CDCD06   [91]     	CALL	GOSTEP		;Step one instruction
+01C5: 2A0C78   [16]     GO		LD   HL,(uPC)		;Get user PC
+01C8: 44       [20]     		LD   B,H			;Copy HIGH
+01C9: 4D       [24]     		LD   C,L			;Copy LOW
+01CA: CD9D04   [41]     		CALL GETADRD		;Get address with default
+01CD: 220C78   [57]     		LD   (uPC),HL		;Save new user PC
+01D0: CDD004   [74]     		CALL LFCR			;New line
+01D3: CDCD06   [91]     		CALL GOSTEP			;Step one instruction
                         ; Implant breakpoints
-01D6: 211178   [101]    	LD	HL,BRKTAB	;Point to breakpoint table
-01D9: 0608     [108]    	LD	B,8		;Max number of breakpoints
-01DB: 5E       [ 7]     imbrk1	LD	E,(HL)		;Get LOW address
-01DC: 23       [13]     	INC	HL		;Advance
-01DD: 56       [20]     	LD	D,(HL)		;Get HIGH address
-01DE: 23       [26]     	INC	HL		;Advance
-01DF: 7A       [30]     	LD	A,D		;Get HIGH
-01E0: B5       [34]     	OR	L		;Test for breakpoint set
-01E1: 2805     [41|46]  	JR	Z,imbrk2	;Not set
-01E3: 1A       [48]     	LD	A,(DE)		;Get opcode
-01E4: 77       [55]     	LD	(HL),A		;Save in table
-01E5: 3EFF     [62]     	LD	A,$FF		;Get breakpoint opcode (RST 7)
-01E7: 12       [69]     	LD	(DE),A		;Write to table
-01E8: 23       [ 6]     imbrk2	INC	HL		;Advance to next
-01E9: 10F0     [14|19]  	DJNZ	imbrk1		;Do them all
+01D6: 211178   [101]    		LD   HL,BRKTAB		;Point to breakpoint table
+01D9: 0608     [108]    		LD   B,8			;Max number of breakpoints
+01DB: 5E       [ 7]     imbrk1	LD   E,(HL)			;Get LOW address
+01DC: 23       [13]     		INC	 HL				;Advance
+01DD: 56       [20]     		LD	 D,(HL)			;Get HIGH address
+01DE: 23       [26]     		INC	 HL				;Advance
+01DF: 7A       [30]     		LD	 A,D			;Get HIGH
+01E0: B5       [34]     		OR	 L				;Test for breakpoint set
+01E1: 2805     [41|46]  		JR	 Z,imbrk2		;Not set
+01E3: 1A       [48]     		LD	 A,(DE)			;Get opcode
+01E4: 77       [55]     		LD	 (HL),A			;Save in table
+01E5: 3EFF     [62]     		LD	 A,$FF			;Get breakpoint opcode (RST 7)
+01E7: 12       [69]     		LD	 (DE),A			;Write to table
+01E8: 23       [ 6]     imbrk2	INC	 HL				;Advance to next
+01E9: 10F0     [14|19]  		DJNZ imbrk1			;Do them all
                         ; Restore user registers and execute
-01EB: DD2A0878 [34]     	LD	IX,(uIX)	;Get IX
-01EF: FD2A0A78 [54]     	LD	IY,(uIY)	;Get IY
-01F3: 2A0278   [70]     	LD	HL,(uBC)	;Get BC
-01F6: 44       [74]     	LD	B,H		;Copy
-01F7: 4D       [78]     	LD	C,L		;Copy
-01F8: 2A0478   [94]     	LD	HL,(uDE)	;Get DE
-01FB: EB       [98]     	EX	DE,HL		;Copy
-01FC: 2A0078   [114]    	LD	HL,(uAF)	;Get AF
-01FF: E5       [125]    	PUSH	HL		;Save
-0200: F1       [135]    	POP	AF		;Copy
-0201: 2A0E78   [151]    	LD	HL,(uSP)	;Get user SP
-0204: F9       [157]    	LD	SP,HL		;Copy
-0205: 2A0C78   [173]    	LD	HL,(uPC)	;Get user PC
-0208: E5       [184]    	PUSH	HL		;Stack for return
-0209: 2A0678   [200]    	LD	HL,(uHL)	;Get user HL
-020C: C9       [210]    	RET			;Jump to user program
+01EB: DD2A0878 [34]     		LD   IX,(uIX)		;Get IX
+01EF: FD2A0A78 [54]     		LD   IY,(uIY)		;Get IY
+01F3: 2A0278   [70]     		LD   HL,(uBC)		;Get BC
+01F6: 44       [74]     		LD   B,H			;Copy
+01F7: 4D       [78]     		LD   C,L			;Copy
+01F8: 2A0478   [94]     		LD   HL,(uDE)		;Get DE
+01FB: EB       [98]     		EX   DE,HL			;Copy
+01FC: 2A0078   [114]    		LD   HL,(uAF)		;Get AF
+01FF: E5       [125]    		PUSH HL				;Save
+0200: F1       [135]    		POP	 AF				;Copy
+0201: 2A0E78   [151]    		LD   HL,(uSP)		;Get user SP
+0204: F9       [157]    		LD   SP,HL			;Copy
+0205: 2A0C78   [173]    		LD   HL,(uPC)		;Get user PC
+0208: E5       [184]    		PUSH HL				;Stack for return
+0209: 2A0678   [200]    		LD	 HL,(uHL)		;Get user HL
+020C: C9       [210]    		RET					;Jump to user program
                         ;
                         ; Dump memory in instruction format (disassembly)
                         ;
-020D: CD8904   [17]     DISCMD	CALL	GETRANG		;Get address
-0210: CDD004   [17]     disc1	CALL	LFCR		;New line
-0213: CD1905   [34]     	CALL	DISASM		;Perform disassembly
-0216: CD5502   [51]     	CALL	CHLDE		;Are we at end?
-0219: 38F5     [58|63]  	JR	C,disc1		;No, keep going
-021B: 28F3     [65|70]  	JR	Z,disc1		;Do last address
-021D: C9       [75]     	RET
+020D: CD8904   [17]     DISCMD	CALL GETRANG		;Get address
+0210: CDD004   [17]     disc1	CALL LFCR			;New line
+0213: CD1905   [34]     		CALL DISASM			;Perform disassembly
+0216: CD5502   [51]     		CALL CHLDE			;Are we at end?
+0219: 38F5     [58|63]  		JR   C,disc1		;No, keep going
+021B: 28F3     [65|70]  		JR   Z,disc1		;Do last address
+021D: C9       [75]     		RET
                         ;
                         ; Dump memory in HEX format
                         ;
-021E: CD8904   [17]     DUMP	CALL	GETRANG		;Get address range
-0221: CDD004   [17]     dump1	CALL	LFCR		;New line
-0224: CDAE04   [34]     	CALL	WRADDR		;Output address
-0227: CD0605   [51]     	CALL	SPACE		;Space over
-022A: 0610     [58]     	LD	B,16		;Display 16 bytes
-022C: E5       [69]     	PUSH	HL		;Save HL
-022D: CD0605   [17]     dump2	CALL	SPACE		;Space over
-0230: 7E       [24]     	LD	A,(HL)		;Get data
-0231: CDB304   [41]     	CALL	WRBYTE		;Display it
-0234: 23       [47]     	INC	HL		;Advance
-0235: 78       [51]     	LD	A,B		;Get copy
-0236: 3D       [55]     	DEC	A		;Adjust
-0237: E603     [62]     	AND	%00000011	;At 4 byte interval?
-0239: CC0605   [72|79]  	CALL	Z,SPACE		;Add extra space
-023C: 05       [76]     	DEC	B		;Backup count
-023D: 20EE     [83|88]  	JR	NZ,dump2	;Keep going
-023F: E1       [93]     	POP	HL		;Restore register set
-0240: CD0605   [110]    	CALL	SPACE		;Space over
-0243: 0610     [117]    	LD	B,16		;Display 16 bytes
-0245: 7E       [ 7]     dump3	LD	A,(HL)		;Get data
-0246: CD5B02   [24]     	CALL	WRPRINT		;Display if printable
-0249: 23       [30]     	INC	HL		;Advance
-024A: 05       [34]     	DEC	B		;Decrement count
-024B: 20F8     [41|46]  	JR	NZ,dump3	;Do them all
-024D: CD5502   [58]     	CALL	CHLDE		;Compre HL and DE
-0250: 38CF     [65|70]  	JR	C,dump1		;Keep going
-0252: 28CD     [72|77]  	JR	Z,dump1		;Do last address
-0254: C9       [82]     	RET
+021E: CD8904   [17]     DUMP	CALL GETRANG		;Get address range
+0221: CDD004   [17]     dump1	CALL LFCR			;New line
+0224: CDAE04   [34]     		CALL WRADDR			;Output address
+0227: CD0605   [51]     		CALL SPACE			;Space over
+022A: 0610     [58]     		LD	 B,16			;Display 16 bytes
+022C: E5       [69]     		PUSH HL				;Save HL
+022D: CD0605   [17]     dump2	CALL SPACE			;Space over
+0230: 7E       [24]     		LD   A,(HL)			;Get data
+0231: CDB304   [41]     		CALL WRBYTE			;Display it
+0234: 23       [47]     		INC	 HL				;Advance
+0235: 78       [51]     		LD	 A,B			;Get copy
+0236: 3D       [55]     		DEC	 A				;Adjust
+0237: E603     [62]     		AND	 %00000011		;At 4 byte interval?
+0239: CC0605   [72|79]  		CALL Z,SPACE		;Add extra space
+023C: 05       [76]     		DEC  B				;Backup count
+023D: 20EE     [83|88]  		JR   NZ,dump2		;Keep going
+023F: E1       [93]     		POP	 HL				;Restore register set
+0240: CD0605   [110]    		CALL SPACE			;Space over
+0243: 0610     [117]    		LD   B,16			;Display 16 bytes
+0245: 7E       [ 7]     dump3	LD   A,(HL)			;Get data
+0246: CD5B02   [24]     		CALL WRPRINT		;Display if printable
+0249: 23       [30]     		INC	 HL				;Advance
+024A: 05       [34]     		DEC	 B				;Decrement count
+024B: 20F8     [41|46]  		JR	 NZ,dump3		;Do them all
+024D: CD5502   [58]     		CALL CHLDE			;Compre HL and DE
+0250: 38CF     [65|70]  		JR	 C,dump1		;Keep going
+0252: 28CD     [72|77]  		JR	 Z,dump1		;Do last address
+0254: C9       [82]     		RET
                         ; Compare HL and DE
-0255: 7C       [ 4]     CHLDE	LD	A,H		;Get HIGH HL
-0256: BA       [ 8]     	CP	D		;Do compare
-0257: C0       [13|19]  	RET	NZ		;Not same
-0258: 7D       [17]     	LD	A,L		;Get LOW HL
-0259: BB       [21]     	CP	E		;Do compare
-025A: C9       [31]     	RET
+0255: 7C       [ 4]     CHLDE	LD   A,H			;Get HIGH HL
+0256: BA       [ 8]     		CP   D				;Do compare
+0257: C0       [13|19]  		RET  NZ				;Not same
+0258: 7D       [17]     		LD   A,L			;Get LOW HL
+0259: BB       [21]     		CP   E				;Do compare
+025A: C9       [31]     		RET
                         ; Display character if printable
-025B: FE20     [ 7]     WRPRINT	CP	' '		;In range
-025D: 3805     [14|19]  	JR	C,wrpri1	;Too low
-025F: FE7F     [21]     	CP	$7F		;In range?
-0261: DAAD0F   [31|31]  	JP	C,PUTC		;Ok, write it
-0264: 3E2E     [ 7]     wrpri1	LD	A,'.'		;Translate to dot
-0266: C3AD0F   [17]     	JP	PUTC		;Write character
+025B: FE20     [ 7]     WRPRINT	CP   ' '			;In range
+025D: 3805     [14|19]  		JR   C,wrpri1		;Too low
+025F: FE7F     [21]     		CP   $7F			;In range?
+0261: DAAD0F   [31|31]  		JP   C,PUTC			;Ok, write it
+0264: 3E2E     [ 7]     wrpri1	LD   A,'.'			;Translate to dot
+0266: C3AD0F   [17]     		JP   PUTC			;Write character
                         ;
                         ; Input from a port
                         ;
-0269: CD3404   [17]     INPORT	CALL	GETHEX		;Get port number
-026C: 4F       [21]     	LD	C,A		;Copy to port select
-026D: CD0605   [38]     	CALL	SPACE		;Space over
-0270: ED78     [50]     	IN	A,(C)		;Read port
-0272: C3B304   [60]     	JP	WRBYTE		;Output
+0269: CD3404   [17]     INPORT	CALL GETHEX			;Get port number
+026C: 4F       [21]     		LD   C,A			;Copy to port select
+026D: CD0605   [38]     		CALL SPACE			;Space over
+0270: ED78     [50]     		IN   A,(C)			;Read port
+0272: C3B304   [60]     		JP   WRBYTE			;Output
                         ;
                         ; Output to a port
                         ;
-0275: CD3404   [17]     OUTPORT	CALL	GETHEX		;Get port number
-0278: 4F       [21]     	LD	C,A		;Copy to port select
-0279: CD0605   [38]     	CALL	SPACE		;Space over
-027C: CD3404   [55]     	CALL	GETHEX		;Get data
-027F: ED79     [67]     	OUT	(C),A		;Write to port
-0281: C9       [77]     	RET
+0275: CD3404   [17]     OUTPORT	CALL GETHEX			;Get port number
+0278: 4F       [21]     		LD   C,A			;Copy to port select
+0279: CD0605   [38]     		CALL SPACE			;Space over
+027C: CD3404   [55]     		CALL GETHEX			;Get data
+027F: ED79     [67]     		OUT  (C),A			;Write to port
+0281: C9       [77]     		RET
                         ;
                         ; Single Step one instruction
                         ;
-0282: 2A0C78   [16]     STEP	LD	HL,(uPC)	;Get user PC
-0285: 4D       [20]     	LD	C,L		;Set C to copy of lower
-0286: CD1905   [37]     	CALL	DISASM		;Display on console
-0289: CDD004   [54]     	CALL	LFCR		;New line
-028C: CDD506   [71]     	CALL	GOSTEP1		;Perform step
+0282: 2A0C78   [16]     STEP	LD   HL,(uPC)		;Get user PC
+0285: 4D       [20]     		LD   C,L			;Set C to copy of lower
+0286: CD1905   [37]     		CALL DISASM			;Display on console
+0289: CDD004   [54]     		CALL LFCR			;New line
+028C: CDD506   [71]     		CALL GOSTEP1		;Perform step
                         ;
                         ; Dump registers
                         ;
-028F: 21AC02   [10]     RDUMP	LD	HL,RNTEXT	;Point to register text
-0292: 110078   [20]     	LD	DE,uAF		;Point to first register
-0295: CD0605   [17]     rdump1	CALL	SPACE		;Space over
-0298: CD1005   [34]     	CALL	WRSTR		;Write string
-029B: 1A       [41]     	LD	A,(DE)		;Get LOW value
-029C: 4F       [45]     	LD	C,A		;Save for later
-029D: 13       [51]     	INC	DE		;Advance
-029E: 1A       [58]     	LD	A,(DE)		;Get HIGH value
-029F: 13       [64]     	INC	DE		;Advance
-02A0: CDB304   [81]     	CALL	WRBYTE		;Write HIGH
-02A3: 79       [85]     	LD	A,C		;Get LOW
-02A4: CDB304   [102]    	CALL	WRBYTE		;Write LOW
-02A7: 7E       [109]    	LD	A,(HL)		;Get flag byte
-02A8: A7       [113]    	AND	A		;At end?
-02A9: 20EA     [120|125]	JR	NZ,rdump1	;Continue
-02AB: C9       [130]    	RET
+028F: 21AC02   [10]     RDUMP	LD   HL,RNTEXT		;Point to register text
+0292: 110078   [20]     		LD   DE,uAF			;Point to first register
+0295: CD0605   [17]     rdump1	CALL SPACE			;Space over
+0298: CD1005   [34]     		CALL WRSTR			;Write string
+029B: 1A       [41]     		LD   A,(DE)			;Get LOW value
+029C: 4F       [45]     		LD   C,A			;Save for later
+029D: 13       [51]     		INC  DE				;Advance
+029E: 1A       [58]     		LD   A,(DE)			;Get HIGH value
+029F: 13       [64]     		INC  DE				;Advance
+02A0: CDB304   [81]     		CALL WRBYTE			;Write HIGH
+02A3: 79       [85]     		LD	 A,C			;Get LOW
+02A4: CDB304   [102]    		CALL	WRBYTE		;Write LOW
+02A7: 7E       [109]    		LD	A,(HL)			;Get flag byte
+02A8: A7       [113]    		AND	A				;At end?
+02A9: 20EA     [120|125]		JR	NZ,rdump1		;Continue
+02AB: C9       [130]    		RET
                         ; Text of register names (in order of register storage)
-02AC: 41463D00          RNTEXT	defm	'AF=',0
-02B0: 42433D00          		defm	'BC=',0
-02B4: 44453D00          		defm	'DE=',0
-02B8: 484C3D00          		defm	'HL=',0
-02BC: 49583D00          		defm	'IX=',0
-02C0: 49593D00          		defm	'IY=',0
-02C4: 50433D00          		defm	'PC=',0
-02C8: 53503D00          		defm	'SP=',0
-02CC: 00                		DB	0		;End of list
-02CD: 210078   [10]     CAF	LD	HL,uAF		;Point to register
-02D0: 1821     [22]     	JR	CHREG		;Change it
-02D2: 210278   [10]     CBC	LD	HL,uBC		;Point to register
-02D5: 181C     [22]     	JR	CHREG		;Change it
-02D7: 210478   [10]     CDE	LD	HL,uDE		;Point to register
-02DA: 1817     [22]     	JR	CHREG		;Change it
-02DC: 210678   [10]     CHL	LD	HL,uHL		;Point to register
-02DF: 1812     [22]     	JR	CHREG		;Change it
-02E1: 210878   [10]     CIX	LD	HL,uIX		;Point to register
-02E4: 180D     [22]     	JR	CHREG		;Change it
-02E6: 210A78   [10]     CIY	LD	HL,uIY		;Point to register
-02E9: 1808     [22]     	JR	CHREG		;Change it
-02EB: 210C78   [10]     CPC	LD	HL,uPC		;Point to register
-02EE: 1803     [22]     	JR	CHREG		;Change it
-02F0: 210E78   [10]     CSP	LD	HL,uSP		;Point to register
+02AC: 41463D00          RNTEXT	defm 'AF=',0
+02B0: 42433D00          		defm 'BC=',0
+02B4: 44453D00          		defm 'DE=',0
+02B8: 484C3D00          		defm 'HL=',0
+02BC: 49583D00          		defm 'IX=',0
+02C0: 49593D00          		defm 'IY=',0
+02C4: 50433D00          		defm 'PC=',0
+02C8: 53503D00          		defm 'SP=',0
+02CC: 00                		DB   0				;End of list
+02CD: 210078   [10]     CAF		LD   HL,uAF			;Point to register
+02D0: 1821     [22]     		JR   CHREG			;Change it
+02D2: 210278   [10]     CBC		LD   HL,uBC			;Point to register
+02D5: 181C     [22]     		JR   CHREG			;Change it
+02D7: 210478   [10]     CDE		LD   HL,uDE			;Point to register
+02DA: 1817     [22]     		JR   CHREG			;Change it
+02DC: 210678   [10]     CHL		LD   HL,uHL			;Point to register
+02DF: 1812     [22]     		JR   CHREG			;Change it
+02E1: 210878   [10]     CIX		LD   HL,uIX			;Point to register
+02E4: 180D     [22]     		JR   CHREG			;Change it
+02E6: 210A78   [10]     CIY		LD   HL,uIY			;Point to register
+02E9: 1808     [22]     		JR   CHREG			;Change it
+02EB: 210C78   [10]     CPC		LD   HL,uPC			;Point to register
+02EE: 1803     [22]     		JR   CHREG			;Change it
+02F0: 210E78   [10]     CSP		LD   HL,uSP			;Point to register
                         ;Change register pointed to by DE
 02F3: 54       [ 4]     CHREG	LD	D,H		;Copy HIGH
 02F4: 5D       [ 8]     	LD	E,L		;Copy LOW
@@ -2033,258 +2055,258 @@ FFFF:                   #data USTACK, $FFFF 	; user stack address (top of RAM)
 
 ; +++ global symbols +++
 
-BDUMP        = $0366 =   870  MCODE   monz80.asm:553
-BEGIN        = $0074 =   116  MCODE   monz80.asm:133
-BRKP1        = $0040 =    64  MCODE   monz80.asm:99 (unused)
-BRKPT        = $0038 =    56  MCODE   monz80.asm:95 (unused)
-BRKTAB       = $7811 = 30737  MDATA   monz80.asm:65
-BUFFER       = $782D = 30765  MDATA   monz80.asm:69
-CAF          = $02CD =   717  MCODE   monz80.asm:467
-CBC          = $02D2 =   722  MCODE   monz80.asm:469
-CCTAB        = $0850 =  2128  MCODE   monz80.asm:1349
-CDE          = $02D7 =   727  MCODE   monz80.asm:471
-CHL          = $02DC =   732  MCODE   monz80.asm:473
-CHLDE        = $0255 =   597  MCODE   monz80.asm:400
-CHREG        = $02F3 =   755  MCODE   monz80.asm:483
-CIX          = $02E1 =   737  MCODE   monz80.asm:475
-CIY          = $02E6 =   742  MCODE   monz80.asm:477
-CLRSER       = $0136 =   310  MCODE   monz80.asm:211
-CMDRET       = $012F =   303  MCODE   monz80.asm:207
-CPC          = $02EB =   747  MCODE   monz80.asm:479
-CSP          = $02F0 =   752  MCODE   monz80.asm:481
-CTABLE       = $0146 =   326  MCODE   monz80.asm:245
-DISASM       = $0519 =  1305  MCODE   monz80.asm:850
-DISCMD       = $020D =   525  MCODE   monz80.asm:361
-DLEOF        = $042F =  1071  MCODE   monz80.asm:680
-DLERR        = $0431 =  1073  MCODE   monz80.asm:683
-DLINT        = $0406 =  1030  MCODE   monz80.asm:652
-DLINT1       = $041F =  1055  MCODE   monz80.asm:668
-DLMOT        = $03D3 =   979  MCODE   monz80.asm:620 (unused)
-DLREC        = $03C8 =   968  MCODE   monz80.asm:614
-DMOT1        = $03F5 =  1013  MCODE   monz80.asm:639
-DTAB         = $0910 =  2320  MCODE   monz80.asm:1454
-DTABCB       = $0ACF =  2767  MCODE   monz80.asm:1525
-DTABDD       = $0B19 =  2841  MCODE   monz80.asm:1537
-DTABED       = $0D01 =  3329  MCODE   monz80.asm:1599
-DTABFD       = $0C0D =  3085  MCODE   monz80.asm:1568
-DUMP         = $021E =   542  MCODE   monz80.asm:371
-EDIT         = $030A =   778  MCODE   monz80.asm:502
-EFEND        = $0E0F =  3599  MCODE   monz80.asm:1652
-EFSIZE       = $0010 =    16          monz80.asm:36
-EFTAB        = $0DCF =  3535  MCODE   monz80.asm:1636
-ENTMON       = $00E7 =   231  MCODE   monz80.asm:158
-ERROR        = $0129 =   297  MCODE   monz80.asm:205
-EXCALL       = $07B1 =  1969  MCODE   monz80.asm:1274
-EXCALLC      = $07AC =  1964  MCODE   monz80.asm:1269
-EXDDP        = $0753 =  1875  MCODE   monz80.asm:1200
-EXDJNZ       = $0792 =  1938  MCODE   monz80.asm:1250
-EXFDP        = $075F =  1887  MCODE   monz80.asm:1208
-EXJP         = $078D =  1933  MCODE   monz80.asm:1245
-EXJPC        = $0788 =  1928  MCODE   monz80.asm:1240
-EXJPHL       = $0775 =  1909  MCODE   monz80.asm:1225
-EXJR         = $079B =  1947  MCODE   monz80.asm:1257
-EXJRC        = $077A =  1914  MCODE   monz80.asm:1230
-EXJRNC       = $077E =  1918  MCODE   monz80.asm:1232
-EXJRNZ       = $0786 =  1926  MCODE   monz80.asm:1236
-EXJRZ        = $0782 =  1922  MCODE   monz80.asm:1234
-EXRET        = $07CF =  1999  MCODE   monz80.asm:1296
-EXRETC       = $07CA =  1994  MCODE   monz80.asm:1291
-EXRST        = $076B =  1899  MCODE   monz80.asm:1216
-EXSKP        = $07C9 =  1993  MCODE   monz80.asm:1287
-FILL         = $0354 =   852  MCODE   monz80.asm:541
-GETADR       = $0480 =  1152  MCODE   monz80.asm:745
-GETADRD      = $049D =  1181  MCODE   monz80.asm:765
-GETC         = $0462 =  1122  MCODE   monz80.asm:724
-GETHEX       = $0434 =  1076  MCODE   monz80.asm:688
-GETHEXC      = $0447 =  1095  MCODE   monz80.asm:702
-GETNIB       = $044D =  1101  MCODE   monz80.asm:708
-GETRANG      = $0489 =  1161  MCODE   monz80.asm:753
-GO           = $01C5 =   453  MCODE   monz80.asm:318
-GOHL         = $07C6 =  1990  MCODE   monz80.asm:1286
-GOHLS        = $07B4 =  1972  MCODE   monz80.asm:1276 (unused)
-GOSTEP       = $06CD =  1741  MCODE   monz80.asm:1122
-GOSTEP1      = $06D5 =  1749  MCODE   monz80.asm:1126
-HELP         = $019B =   411  MCODE   monz80.asm:294
-HTEXT        = $0E0F =  3599  MCODE   monz80.asm:1656
-INPORT       = $0269 =   617  MCODE   monz80.asm:416
-IOCTL        = $7810 = 30736  MDATA   monz80.asm:64
-IOINIT       = $0F96 =  3990  _u68B50 monz80.asm:1681
-IXBYTE       = $06AE =  1710  MCODE   monz80.asm:1099
-IXNIB        = $06BB =  1723  MCODE   monz80.asm:1106
-LFCR         = $04D0 =  1232  MCODE   monz80.asm:804
-LOAD         = $03BA =   954  MCODE   monz80.asm:605
-MCODE        = $0000 =     0  MCODE   monz80.asm:75 (unused)
-MCODE_end    = $0F96 =  3990  MCODE   monz80.asm:75 (unused)
-MCODE_size   = $0F96 =  3990  MCODE   monz80.asm:75 (unused)
-MDATA        = $7800 = 30720  MDATA   monz80.asm:45
-MDATA_end    = $7860 = 30816  MDATA   monz80.asm:45 (unused)
-MDATA_size   = $0060 =    96  MDATA   monz80.asm:45 (unused)
-MONSTK       = $785F = 30815  MDATA   monz80.asm:70
-OUTPORT      = $0275 =   629  MCODE   monz80.asm:424
-PUTC         = $0FAD =  4013  _u68B50 monz80.asm:1701
-RDUMP        = $028F =   655  MCODE   monz80.asm:441
-REGTAB       = $0800 =  2048  MCODE   monz80.asm:1327
-RNTEXT       = $02AC =   684  MCODE   monz80.asm:458
-RPTAB        = $0820 =  2080  MCODE   monz80.asm:1336
-RPTABX       = $0830 =  2096  MCODE   monz80.asm:1340
-RPTABY       = $0840 =  2112  MCODE   monz80.asm:1344
-SETBRK       = $039A =   922  MCODE   monz80.asm:583
-SPACE        = $0506 =  1286  MCODE   monz80.asm:829
-STEP         = $0282 =   642  MCODE   monz80.asm:433
-STEPRET      = $072E =  1838  MCODE   monz80.asm:1180
-TABTAB       = $0870 =  2160  MCODE   monz80.asm:1358
-TEMP         = $7829 = 30761  MDATA   monz80.asm:66
-TEMP1        = $782B = 30763  MDATA   monz80.asm:67
-TEMP2        = $782C = 30764  MDATA   monz80.asm:68
-TESTC        = $0FA5 =  4005  _u68B50 monz80.asm:1693
-TESTCC       = $07E0 =  2016  MCODE   monz80.asm:1308
-UCODE        = $7860 = 30816  UCODE   monz80.asm:42
-UCODE_end    = $7860 = 30816  UCODE   monz80.asm:42 (unused)
-UCODE_size   = $0000 =     0  UCODE   monz80.asm:42 (unused)
-USTACK       = $FFFF = 65535  USTACK  monz80.asm:39
-USTACK_end   = $FFFF = 65535  USTACK  monz80.asm:39 (unused)
-USTACK_size  = $0000 =     0  USTACK  monz80.asm:39 (unused)
-WRADDR       = $04AE =  1198  MCODE   monz80.asm:776
-WRBYTE       = $04B3 =  1203  MCODE   monz80.asm:782
-WRMSG        = $050B =  1291  MCODE   monz80.asm:834
-WRNIB        = $04C0 =  1216  MCODE   monz80.asm:792
-WRPRINT      = $025B =   603  MCODE   monz80.asm:407
-WRSTR        = $0510 =  1296  MCODE   monz80.asm:840
-_u68B50      = $0F96 =  3990  _u68B50 monz80.asm:1674 (unused)
-_u68B50_end  = $0FB8 =  4024  _u68B50 monz80.asm:1674 (unused)
-_u68B50_size = $0022 =    34  _u68B50 monz80.asm:1674 (unused)
-bdump1       = $036B =   875  MCODE   monz80.asm:555
-bdump2       = $0390 =   912  MCODE   monz80.asm:574
-bdump3       = $0393 =   915  MCODE   monz80.asm:575
-begin1       = $0080 =   128  MCODE   monz80.asm:138
-clrse1       = $0139 =   313  MCODE   monz80.asm:212
-cmd          = $00F9 =   249  MCODE   monz80.asm:166
-cmd1         = $0101 =   257  MCODE   monz80.asm:171
-cmd2         = $0117 =   279  MCODE   monz80.asm:189
-cmd3         = $011C =   284  MCODE   monz80.asm:194
-dis1         = $052A =  1322  MCODE   monz80.asm:860
-dis2         = $0538 =  1336  MCODE   monz80.asm:867
-dis3         = $0548 =  1352  MCODE   monz80.asm:874
-dis4         = $0553 =  1363  MCODE   monz80.asm:880
-dis5         = $055C =  1372  MCODE   monz80.asm:884
-dis7         = $056E =  1390  MCODE   monz80.asm:893
-dis8         = $0579 =  1401  MCODE   monz80.asm:899
-disa1        = $059E =  1438  MCODE   monz80.asm:922
-disa10       = $0612 =  1554  MCODE   monz80.asm:1002
-disa100      = $06A1 =  1697  MCODE   monz80.asm:1090
-disa11       = $0623 =  1571  MCODE   monz80.asm:1013
-disa12       = $062C =  1580  MCODE   monz80.asm:1018
-disa13       = $0635 =  1589  MCODE   monz80.asm:1023
-disa14       = $0646 =  1606  MCODE   monz80.asm:1033
-disa14a      = $0653 =  1619  MCODE   monz80.asm:1041
-disa15       = $0661 =  1633  MCODE   monz80.asm:1050
-disa15a      = $067E =  1662  MCODE   monz80.asm:1069
-disa16       = $0682 =  1666  MCODE   monz80.asm:1072
-disa17       = $068B =  1675  MCODE   monz80.asm:1077
-disa18       = $0699 =  1689  MCODE   monz80.asm:1086
-disa2        = $05A6 =  1446  MCODE   monz80.asm:929
-disa3        = $05AD =  1453  MCODE   monz80.asm:936
-disa4        = $05B7 =  1463  MCODE   monz80.asm:945
-disa5        = $05BB =  1467  MCODE   monz80.asm:947
-disa6        = $05CB =  1483  MCODE   monz80.asm:956
-disa61       = $05D0 =  1488  MCODE   monz80.asm:958
-disa62       = $05D9 =  1497  MCODE   monz80.asm:965
-disa63       = $05E6 =  1510  MCODE   monz80.asm:973
-disa7        = $05E9 =  1513  MCODE   monz80.asm:976
-disa8        = $05F5 =  1525  MCODE   monz80.asm:984
-disa81       = $05FC =  1532  MCODE   monz80.asm:987
-disa9        = $0607 =  1543  MCODE   monz80.asm:995
-disa900      = $06A9 =  1705  MCODE   monz80.asm:1094
-disa91       = $060D =  1549  MCODE   monz80.asm:999
-disass       = $057C =  1404  MCODE   monz80.asm:906
-disc1        = $0210 =   528  MCODE   monz80.asm:362
-dump1        = $0221 =   545  MCODE   monz80.asm:372
-dump2        = $022D =   557  MCODE   monz80.asm:377
-dump3        = $0245 =   581  MCODE   monz80.asm:390
-edit1        = $030D =   781  MCODE   monz80.asm:503
-edit2        = $0313 =   787  MCODE   monz80.asm:505
-edit3        = $0325 =   805  MCODE   monz80.asm:513
-edit4        = $032D =   813  MCODE   monz80.asm:518
-edit5        = $0336 =   822  MCODE   monz80.asm:522
-edit6        = $033A =   826  MCODE   monz80.asm:524
-edit7        = $0346 =   838  MCODE   monz80.asm:530
-exjr1        = $07A6 =  1958  MCODE   monz80.asm:1263
-fill1        = $035E =   862  MCODE   monz80.asm:545
-geta1        = $0483 =  1155  MCODE   monz80.asm:746
-getc1        = $0467 =  1127  MCODE   monz80.asm:727
-getc2        = $0474 =  1140  MCODE   monz80.asm:735
-getc3        = $047E =  1150  MCODE   monz80.asm:740
-geth1        = $043A =  1082  MCODE   monz80.asm:690
-help1        = $019E =   414  MCODE   monz80.asm:295
-help2        = $01A3 =   419  MCODE   monz80.asm:297
-help3        = $01B2 =   434  MCODE   monz80.asm:306
-help4        = $01C1 =   449  MCODE   monz80.asm:312
-imbrk1       = $01DB =   475  MCODE   monz80.asm:328
-imbrk2       = $01E8 =   488  MCODE   monz80.asm:339
-ixnib1       = $06C4 =  1732  MCODE   monz80.asm:1111
-lfcr1        = $04E6 =  1254  MCODE   monz80.asm:813
-lfcr2        = $04F5 =  1269  MCODE   monz80.asm:819
-lfcr4        = $04FC =  1276  MCODE   monz80.asm:822
-load1        = $03BF =   959  MCODE   monz80.asm:607
-putc1        = $0FAE =  4014  _u68B50 monz80.asm:1702
-rdump1       = $0295 =   661  MCODE   monz80.asm:443
-rembrk1      = $0062 =    98  MCODE   monz80.asm:117
-rembrk2      = $006C =   108  MCODE   monz80.asm:126
-setb1        = $03AF =   943  MCODE   monz80.asm:595
-step1        = $06F7 =  1783  MCODE   monz80.asm:1146
-step2        = $0702 =  1794  MCODE   monz80.asm:1156
-step3        = $0729 =  1833  MCODE   monz80.asm:1174
-uAF          = $7800 = 30720  MDATA   monz80.asm:48
-uBC          = $7802 = 30722  MDATA   monz80.asm:49
-uDE          = $7804 = 30724  MDATA   monz80.asm:50
-uHL          = $7806 = 30726  MDATA   monz80.asm:51
-uIX          = $7808 = 30728  MDATA   monz80.asm:52
-uIY          = $780A = 30730  MDATA   monz80.asm:53
-uPC          = $780C = 30732  MDATA   monz80.asm:54
-uSP          = $780E = 30734  MDATA   monz80.asm:55
-wrnib1       = $04C9 =  1225  MCODE   monz80.asm:797
-wrpri1       = $0264 =   612  MCODE   monz80.asm:411
-xACM         = $008B =   139  MCODE   monz80.asm:1381
-xADC         = $0095 =   149  MCODE   monz80.asm:1401
-xADD         = $0094 =   148  MCODE   monz80.asm:1399
-xAF          = $0090 =   144  MCODE   monz80.asm:1391
-xAND         = $0098 =   152  MCODE   monz80.asm:1407
-xBC          = $0081 =   129  MCODE   monz80.asm:1361 (unused)
-xBCI         = $0086 =   134  MCODE   monz80.asm:1371
-xBIT         = $00A5 =   165  MCODE   monz80.asm:1433
-xCALL        = $00A1 =   161  MCODE   monz80.asm:1425
-xCMA         = $008C =   140  MCODE   monz80.asm:1383
-xCP          = $0093 =   147  MCODE   monz80.asm:1397
-xDE          = $0082 =   130  MCODE   monz80.asm:1363
-xDEC         = $009C =   156  MCODE   monz80.asm:1415
-xDEI         = $0087 =   135  MCODE   monz80.asm:1373
-xEX          = $0091 =   145  MCODE   monz80.asm:1393
-xHL          = $0083 =   131  MCODE   monz80.asm:1365
-xHLI         = $0088 =   136  MCODE   monz80.asm:1375
-xIN          = $00A3 =   163  MCODE   monz80.asm:1429
-xINC         = $009B =   155  MCODE   monz80.asm:1413
-xIX          = $0084 =   132  MCODE   monz80.asm:1367
-xIXI         = $0089 =   137  MCODE   monz80.asm:1377
-xIY          = $0085 =   133  MCODE   monz80.asm:1369
-xIYI         = $008A =   138  MCODE   monz80.asm:1379
-xJP          = $009F =   159  MCODE   monz80.asm:1421
-xJR          = $00A0 =   160  MCODE   monz80.asm:1423
-xLD          = $0080 =   128  MCODE   monz80.asm:1359
-xLDx         = $0092 =   146  MCODE   monz80.asm:1395
-xOR          = $0099 =   153  MCODE   monz80.asm:1409
-xOUT         = $00A4 =   164  MCODE   monz80.asm:1431
-xPOP         = $008F =   143  MCODE   monz80.asm:1389
-xPUSH        = $008E =   142  MCODE   monz80.asm:1387
-xRES         = $00A7 =   167  MCODE   monz80.asm:1437
-xRET         = $00A2 =   162  MCODE   monz80.asm:1427
-xRL          = $009D =   157  MCODE   monz80.asm:1417
-xRR          = $009E =   158  MCODE   monz80.asm:1419
-xSBC         = $0097 =   151  MCODE   monz80.asm:1405
-xSET         = $00A6 =   166  MCODE   monz80.asm:1435
-xSP          = $008D =   141  MCODE   monz80.asm:1385
-xSUB         = $0096 =   150  MCODE   monz80.asm:1403
-xXOR         = $009A =   154  MCODE   monz80.asm:1411
+BDUMP        = $0366 =   870  MCODE   monz80.asm:575
+BEGIN        = $0074 =   116  MCODE   monz80.asm:156
+BRKP1        = $0040 =    64  MCODE   monz80.asm:122 (unused)
+BRKPT        = $0038 =    56  MCODE   monz80.asm:118 (unused)
+BRKTAB       = $7811 = 30737  MDATA   monz80.asm:88
+BUFFER       = $782D = 30765  MDATA   monz80.asm:92
+CAF          = $02CD =   717  MCODE   monz80.asm:489
+CBC          = $02D2 =   722  MCODE   monz80.asm:491
+CCTAB        = $0850 =  2128  MCODE   monz80.asm:1371
+CDE          = $02D7 =   727  MCODE   monz80.asm:493
+CHL          = $02DC =   732  MCODE   monz80.asm:495
+CHLDE        = $0255 =   597  MCODE   monz80.asm:422
+CHREG        = $02F3 =   755  MCODE   monz80.asm:505
+CIX          = $02E1 =   737  MCODE   monz80.asm:497
+CIY          = $02E6 =   742  MCODE   monz80.asm:499
+CLRSER       = $0136 =   310  MCODE   monz80.asm:234
+CMDRET       = $012F =   303  MCODE   monz80.asm:230
+CPC          = $02EB =   747  MCODE   monz80.asm:501
+CSP          = $02F0 =   752  MCODE   monz80.asm:503
+CTABLE       = $0146 =   326  MCODE   monz80.asm:268
+DISASM       = $0519 =  1305  MCODE   monz80.asm:872
+DISCMD       = $020D =   525  MCODE   monz80.asm:383
+DLEOF        = $042F =  1071  MCODE   monz80.asm:702
+DLERR        = $0431 =  1073  MCODE   monz80.asm:705
+DLINT        = $0406 =  1030  MCODE   monz80.asm:674
+DLINT1       = $041F =  1055  MCODE   monz80.asm:690
+DLMOT        = $03D3 =   979  MCODE   monz80.asm:642 (unused)
+DLREC        = $03C8 =   968  MCODE   monz80.asm:636
+DMOT1        = $03F5 =  1013  MCODE   monz80.asm:661
+DTAB         = $0910 =  2320  MCODE   monz80.asm:1476
+DTABCB       = $0ACF =  2767  MCODE   monz80.asm:1547
+DTABDD       = $0B19 =  2841  MCODE   monz80.asm:1559
+DTABED       = $0D01 =  3329  MCODE   monz80.asm:1621
+DTABFD       = $0C0D =  3085  MCODE   monz80.asm:1590
+DUMP         = $021E =   542  MCODE   monz80.asm:393
+EDIT         = $030A =   778  MCODE   monz80.asm:524
+EFEND        = $0E0F =  3599  MCODE   monz80.asm:1674
+EFSIZE       = $0010 =    16          monz80.asm:59
+EFTAB        = $0DCF =  3535  MCODE   monz80.asm:1658
+ENTMON       = $00E7 =   231  MCODE   monz80.asm:181
+ERROR        = $0129 =   297  MCODE   monz80.asm:228
+EXCALL       = $07B1 =  1969  MCODE   monz80.asm:1296
+EXCALLC      = $07AC =  1964  MCODE   monz80.asm:1291
+EXDDP        = $0753 =  1875  MCODE   monz80.asm:1222
+EXDJNZ       = $0792 =  1938  MCODE   monz80.asm:1272
+EXFDP        = $075F =  1887  MCODE   monz80.asm:1230
+EXJP         = $078D =  1933  MCODE   monz80.asm:1267
+EXJPC        = $0788 =  1928  MCODE   monz80.asm:1262
+EXJPHL       = $0775 =  1909  MCODE   monz80.asm:1247
+EXJR         = $079B =  1947  MCODE   monz80.asm:1279
+EXJRC        = $077A =  1914  MCODE   monz80.asm:1252
+EXJRNC       = $077E =  1918  MCODE   monz80.asm:1254
+EXJRNZ       = $0786 =  1926  MCODE   monz80.asm:1258
+EXJRZ        = $0782 =  1922  MCODE   monz80.asm:1256
+EXRET        = $07CF =  1999  MCODE   monz80.asm:1318
+EXRETC       = $07CA =  1994  MCODE   monz80.asm:1313
+EXRST        = $076B =  1899  MCODE   monz80.asm:1238
+EXSKP        = $07C9 =  1993  MCODE   monz80.asm:1309
+FILL         = $0354 =   852  MCODE   monz80.asm:563
+GETADR       = $0480 =  1152  MCODE   monz80.asm:767
+GETADRD      = $049D =  1181  MCODE   monz80.asm:787
+GETC         = $0462 =  1122  MCODE   monz80.asm:746
+GETHEX       = $0434 =  1076  MCODE   monz80.asm:710
+GETHEXC      = $0447 =  1095  MCODE   monz80.asm:724
+GETNIB       = $044D =  1101  MCODE   monz80.asm:730
+GETRANG      = $0489 =  1161  MCODE   monz80.asm:775
+GO           = $01C5 =   453  MCODE   monz80.asm:340
+GOHL         = $07C6 =  1990  MCODE   monz80.asm:1308
+GOHLS        = $07B4 =  1972  MCODE   monz80.asm:1298 (unused)
+GOSTEP       = $06CD =  1741  MCODE   monz80.asm:1144
+GOSTEP1      = $06D5 =  1749  MCODE   monz80.asm:1148
+HELP         = $019B =   411  MCODE   monz80.asm:316
+HTEXT        = $0E0F =  3599  MCODE   monz80.asm:1678
+INPORT       = $0269 =   617  MCODE   monz80.asm:438
+IOCTL        = $7810 = 30736  MDATA   monz80.asm:87
+IOINIT       = $0F96 =  3990  _u68B50 monz80.asm:1703
+IXBYTE       = $06AE =  1710  MCODE   monz80.asm:1121
+IXNIB        = $06BB =  1723  MCODE   monz80.asm:1128
+LFCR         = $04D0 =  1232  MCODE   monz80.asm:826
+LOAD         = $03BA =   954  MCODE   monz80.asm:627
+MCODE        = $0000 =     0  MCODE   monz80.asm:98 (unused)
+MCODE_end    = $0F96 =  3990  MCODE   monz80.asm:98 (unused)
+MCODE_size   = $0F96 =  3990  MCODE   monz80.asm:98 (unused)
+MDATA        = $7800 = 30720  MDATA   monz80.asm:68
+MDATA_end    = $7860 = 30816  MDATA   monz80.asm:68 (unused)
+MDATA_size   = $0060 =    96  MDATA   monz80.asm:68 (unused)
+MONSTK       = $785F = 30815  MDATA   monz80.asm:93
+OUTPORT      = $0275 =   629  MCODE   monz80.asm:446
+PUTC         = $0FAD =  4013  _u68B50 monz80.asm:1723
+RDUMP        = $028F =   655  MCODE   monz80.asm:463
+REGTAB       = $0800 =  2048  MCODE   monz80.asm:1349
+RNTEXT       = $02AC =   684  MCODE   monz80.asm:480
+RPTAB        = $0820 =  2080  MCODE   monz80.asm:1358
+RPTABX       = $0830 =  2096  MCODE   monz80.asm:1362
+RPTABY       = $0840 =  2112  MCODE   monz80.asm:1366
+SETBRK       = $039A =   922  MCODE   monz80.asm:605
+SPACE        = $0506 =  1286  MCODE   monz80.asm:851
+STEP         = $0282 =   642  MCODE   monz80.asm:455
+STEPRET      = $072E =  1838  MCODE   monz80.asm:1202
+TABTAB       = $0870 =  2160  MCODE   monz80.asm:1380
+TEMP         = $7829 = 30761  MDATA   monz80.asm:89
+TEMP1        = $782B = 30763  MDATA   monz80.asm:90
+TEMP2        = $782C = 30764  MDATA   monz80.asm:91
+TESTC        = $0FA5 =  4005  _u68B50 monz80.asm:1715
+TESTCC       = $07E0 =  2016  MCODE   monz80.asm:1330
+UCODE        = $7860 = 30816  UCODE   monz80.asm:65
+UCODE_end    = $7860 = 30816  UCODE   monz80.asm:65 (unused)
+UCODE_size   = $0000 =     0  UCODE   monz80.asm:65 (unused)
+USTACK       = $FFFF = 65535  USTACK  monz80.asm:62
+USTACK_end   = $FFFF = 65535  USTACK  monz80.asm:62 (unused)
+USTACK_size  = $0000 =     0  USTACK  monz80.asm:62 (unused)
+WRADDR       = $04AE =  1198  MCODE   monz80.asm:798
+WRBYTE       = $04B3 =  1203  MCODE   monz80.asm:804
+WRMSG        = $050B =  1291  MCODE   monz80.asm:856
+WRNIB        = $04C0 =  1216  MCODE   monz80.asm:814
+WRPRINT      = $025B =   603  MCODE   monz80.asm:429
+WRSTR        = $0510 =  1296  MCODE   monz80.asm:862
+_u68B50      = $0F96 =  3990  _u68B50 monz80.asm:1696 (unused)
+_u68B50_end  = $0FB8 =  4024  _u68B50 monz80.asm:1696 (unused)
+_u68B50_size = $0022 =    34  _u68B50 monz80.asm:1696 (unused)
+bdump1       = $036B =   875  MCODE   monz80.asm:577
+bdump2       = $0390 =   912  MCODE   monz80.asm:596
+bdump3       = $0393 =   915  MCODE   monz80.asm:597
+begin1       = $0080 =   128  MCODE   monz80.asm:161
+clrse1       = $0139 =   313  MCODE   monz80.asm:235
+cmd          = $00F9 =   249  MCODE   monz80.asm:189
+cmd1         = $0101 =   257  MCODE   monz80.asm:194
+cmd2         = $0117 =   279  MCODE   monz80.asm:212
+cmd3         = $011C =   284  MCODE   monz80.asm:217
+dis1         = $052A =  1322  MCODE   monz80.asm:882
+dis2         = $0538 =  1336  MCODE   monz80.asm:889
+dis3         = $0548 =  1352  MCODE   monz80.asm:896
+dis4         = $0553 =  1363  MCODE   monz80.asm:902
+dis5         = $055C =  1372  MCODE   monz80.asm:906
+dis7         = $056E =  1390  MCODE   monz80.asm:915
+dis8         = $0579 =  1401  MCODE   monz80.asm:921
+disa1        = $059E =  1438  MCODE   monz80.asm:944
+disa10       = $0612 =  1554  MCODE   monz80.asm:1024
+disa100      = $06A1 =  1697  MCODE   monz80.asm:1112
+disa11       = $0623 =  1571  MCODE   monz80.asm:1035
+disa12       = $062C =  1580  MCODE   monz80.asm:1040
+disa13       = $0635 =  1589  MCODE   monz80.asm:1045
+disa14       = $0646 =  1606  MCODE   monz80.asm:1055
+disa14a      = $0653 =  1619  MCODE   monz80.asm:1063
+disa15       = $0661 =  1633  MCODE   monz80.asm:1072
+disa15a      = $067E =  1662  MCODE   monz80.asm:1091
+disa16       = $0682 =  1666  MCODE   monz80.asm:1094
+disa17       = $068B =  1675  MCODE   monz80.asm:1099
+disa18       = $0699 =  1689  MCODE   monz80.asm:1108
+disa2        = $05A6 =  1446  MCODE   monz80.asm:951
+disa3        = $05AD =  1453  MCODE   monz80.asm:958
+disa4        = $05B7 =  1463  MCODE   monz80.asm:967
+disa5        = $05BB =  1467  MCODE   monz80.asm:969
+disa6        = $05CB =  1483  MCODE   monz80.asm:978
+disa61       = $05D0 =  1488  MCODE   monz80.asm:980
+disa62       = $05D9 =  1497  MCODE   monz80.asm:987
+disa63       = $05E6 =  1510  MCODE   monz80.asm:995
+disa7        = $05E9 =  1513  MCODE   monz80.asm:998
+disa8        = $05F5 =  1525  MCODE   monz80.asm:1006
+disa81       = $05FC =  1532  MCODE   monz80.asm:1009
+disa9        = $0607 =  1543  MCODE   monz80.asm:1017
+disa900      = $06A9 =  1705  MCODE   monz80.asm:1116
+disa91       = $060D =  1549  MCODE   monz80.asm:1021
+disass       = $057C =  1404  MCODE   monz80.asm:928
+disc1        = $0210 =   528  MCODE   monz80.asm:384
+dump1        = $0221 =   545  MCODE   monz80.asm:394
+dump2        = $022D =   557  MCODE   monz80.asm:399
+dump3        = $0245 =   581  MCODE   monz80.asm:412
+edit1        = $030D =   781  MCODE   monz80.asm:525
+edit2        = $0313 =   787  MCODE   monz80.asm:527
+edit3        = $0325 =   805  MCODE   monz80.asm:535
+edit4        = $032D =   813  MCODE   monz80.asm:540
+edit5        = $0336 =   822  MCODE   monz80.asm:544
+edit6        = $033A =   826  MCODE   monz80.asm:546
+edit7        = $0346 =   838  MCODE   monz80.asm:552
+exjr1        = $07A6 =  1958  MCODE   monz80.asm:1285
+fill1        = $035E =   862  MCODE   monz80.asm:567
+geta1        = $0483 =  1155  MCODE   monz80.asm:768
+getc1        = $0467 =  1127  MCODE   monz80.asm:749
+getc2        = $0474 =  1140  MCODE   monz80.asm:757
+getc3        = $047E =  1150  MCODE   monz80.asm:762
+geth1        = $043A =  1082  MCODE   monz80.asm:712
+help1        = $019E =   414  MCODE   monz80.asm:317
+help2        = $01A3 =   419  MCODE   monz80.asm:319
+help3        = $01B2 =   434  MCODE   monz80.asm:328
+help4        = $01C1 =   449  MCODE   monz80.asm:334
+imbrk1       = $01DB =   475  MCODE   monz80.asm:350
+imbrk2       = $01E8 =   488  MCODE   monz80.asm:361
+ixnib1       = $06C4 =  1732  MCODE   monz80.asm:1133
+lfcr1        = $04E6 =  1254  MCODE   monz80.asm:835
+lfcr2        = $04F5 =  1269  MCODE   monz80.asm:841
+lfcr4        = $04FC =  1276  MCODE   monz80.asm:844
+load1        = $03BF =   959  MCODE   monz80.asm:629
+putc1        = $0FAE =  4014  _u68B50 monz80.asm:1724
+rdump1       = $0295 =   661  MCODE   monz80.asm:465
+rembrk1      = $0062 =    98  MCODE   monz80.asm:140
+rembrk2      = $006C =   108  MCODE   monz80.asm:149
+setb1        = $03AF =   943  MCODE   monz80.asm:617
+step1        = $06F7 =  1783  MCODE   monz80.asm:1168
+step2        = $0702 =  1794  MCODE   monz80.asm:1178
+step3        = $0729 =  1833  MCODE   monz80.asm:1196
+uAF          = $7800 = 30720  MDATA   monz80.asm:71
+uBC          = $7802 = 30722  MDATA   monz80.asm:72
+uDE          = $7804 = 30724  MDATA   monz80.asm:73
+uHL          = $7806 = 30726  MDATA   monz80.asm:74
+uIX          = $7808 = 30728  MDATA   monz80.asm:75
+uIY          = $780A = 30730  MDATA   monz80.asm:76
+uPC          = $780C = 30732  MDATA   monz80.asm:77
+uSP          = $780E = 30734  MDATA   monz80.asm:78
+wrnib1       = $04C9 =  1225  MCODE   monz80.asm:819
+wrpri1       = $0264 =   612  MCODE   monz80.asm:433
+xACM         = $008B =   139  MCODE   monz80.asm:1403
+xADC         = $0095 =   149  MCODE   monz80.asm:1423
+xADD         = $0094 =   148  MCODE   monz80.asm:1421
+xAF          = $0090 =   144  MCODE   monz80.asm:1413
+xAND         = $0098 =   152  MCODE   monz80.asm:1429
+xBC          = $0081 =   129  MCODE   monz80.asm:1383 (unused)
+xBCI         = $0086 =   134  MCODE   monz80.asm:1393
+xBIT         = $00A5 =   165  MCODE   monz80.asm:1455
+xCALL        = $00A1 =   161  MCODE   monz80.asm:1447
+xCMA         = $008C =   140  MCODE   monz80.asm:1405
+xCP          = $0093 =   147  MCODE   monz80.asm:1419
+xDE          = $0082 =   130  MCODE   monz80.asm:1385
+xDEC         = $009C =   156  MCODE   monz80.asm:1437
+xDEI         = $0087 =   135  MCODE   monz80.asm:1395
+xEX          = $0091 =   145  MCODE   monz80.asm:1415
+xHL          = $0083 =   131  MCODE   monz80.asm:1387
+xHLI         = $0088 =   136  MCODE   monz80.asm:1397
+xIN          = $00A3 =   163  MCODE   monz80.asm:1451
+xINC         = $009B =   155  MCODE   monz80.asm:1435
+xIX          = $0084 =   132  MCODE   monz80.asm:1389
+xIXI         = $0089 =   137  MCODE   monz80.asm:1399
+xIY          = $0085 =   133  MCODE   monz80.asm:1391
+xIYI         = $008A =   138  MCODE   monz80.asm:1401
+xJP          = $009F =   159  MCODE   monz80.asm:1443
+xJR          = $00A0 =   160  MCODE   monz80.asm:1445
+xLD          = $0080 =   128  MCODE   monz80.asm:1381
+xLDx         = $0092 =   146  MCODE   monz80.asm:1417
+xOR          = $0099 =   153  MCODE   monz80.asm:1431
+xOUT         = $00A4 =   164  MCODE   monz80.asm:1453
+xPOP         = $008F =   143  MCODE   monz80.asm:1411
+xPUSH        = $008E =   142  MCODE   monz80.asm:1409
+xRES         = $00A7 =   167  MCODE   monz80.asm:1459
+xRET         = $00A2 =   162  MCODE   monz80.asm:1449
+xRL          = $009D =   157  MCODE   monz80.asm:1439
+xRR          = $009E =   158  MCODE   monz80.asm:1441
+xSBC         = $0097 =   151  MCODE   monz80.asm:1427
+xSET         = $00A6 =   166  MCODE   monz80.asm:1457
+xSP          = $008D =   141  MCODE   monz80.asm:1407
+xSUB         = $0096 =   150  MCODE   monz80.asm:1425
+xXOR         = $009A =   154  MCODE   monz80.asm:1433
 
 
-total time: 0.0332 sec.
+total time: 0.0083 sec.
 no errors

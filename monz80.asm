@@ -29,11 +29,27 @@
 
 ;; code segments:
 
-;;   USTACK - the user stack (top of RAM) 
-;;   UCODE - the user code area (where the user program is loaded) 
-;;   MDATA - the monitor data area (where the monitor variables are stored)
-;;	 MCODE - the monitor code
-;;   _u68B50 - the 68B50 UART driver (found at bottom of this file)
+;;	USTACK - the user stack (top of RAM) 
+;;	UCODE - the user code area (where the user program is loaded) 
+;;	MDATA - the monitor data area (where the monitor variables are stored)
+;;	MCODE - the monitor code
+;;	_u68B50 - the 68B50 UART driver (found at bottom of this file)
+
+;; formatting guidelines:
+;; I tried to keep the original formatting where I could, but David's original 
+;; IDE had interesting formatting, as well as was written for DOS.  VSCode is
+;; its own animal when it comes to formatting legacy code. 
+;; Here is what I came up with:
+
+;;{COL 0 LABEL} [<TAB>][<TAB>] [COL 9 2CH OPCODE] [<SP>][<SP>][<SP>] {COL 14 OPERAND} [<TAB>][<TAB>][<TAB>] {COL 29 COMMENT}
+;;{COL 0 LABEL} [<TAB>][<TAB>] [COL 9 3CH OPCODE] [<SP>][<SP>]       {COL 14 OPERAND} [<TAB>][<TAB>][<TAB>] {COL 29 COMMENT}
+;;{COL 0 LABEL} [<TAB>][<TAB>] [COL 9 4CH OPCODE] [<SP>]             {COL 14 OPERAND} [<TAB>][<TAB>][<TAB>] {COL 29 COMMENT}
+
+;; label names do not have a ':' though new ones may have a '_' at the start.
+;; ASMZ80 does not support case senitive labels, so a few adaptations had to be made, verified by mostly relitive jump machine code 
+;; in the listing, or by verifying the binary output.
+
+;; the original formatting was left in a 'state' by vscode, so thats made making automation scripts very difficult, so I am doing it by hand.
 
 ;; zasm preproc:
 #charset ascii 
@@ -43,187 +59,187 @@
 EFSIZE  EQU (EFEND-EFTAB)/4
 
 ;; top of stack (without window for banking)
-#data USTACK, $FFFF 	; user stack address (top of RAM)
+#data USTACK, $FFFF			; user stack address (top of RAM)
 
 ;; user code area is here, below is the ROM Start address.
-#data UCODE, $7860 		; user code area starts here and runs into the stack
+#data UCODE, $7860			; user code area starts here and runs into the stack
 
 ;; monitor data area is here
-#data MDATA, $7800, $60	; monitor requires 60 bytes of ram for variable
+#data MDATA, $7800, $60		; monitor requires 60 bytes of ram for variable
 
 ;; User registers (saved while monitor active)
-uAF	DS	2		;User AF register
-uBC	DS	2		;User BC register
-uDE	DS	2		;User DE register
-uHL	DS	2		;User HL register
-uIX	DS	2		;User IX register
-uIY	DS	2		;User IY register
-uPC	DS	2		;User PC register
-uSP	DS	2		;User SP register
+uAF		DS   2				;User AF register
+uBC		DS   2				;User BC register
+uDE		DS   2				;User DE register
+uHL		DS   2				;User HL register
+uIX		DS   2				;User IX register
+uIY		DS   2				;User IY register
+uPC		DS   2				;User PC register
+uSP		DS   2				;User SP register
 
 ;; I/O control byte:
 
- ;  7/80 = Output paused
- ;  6/40 = Echo input
- ;  5/20 = Convert to upper case
- ;  4/10 = Clear input stream first
+;  7/80 = Output paused
+;  6/40 = Echo input
+;  5/20 = Convert to upper case
+;  4/10 = Clear input stream first
 
-IOCTL	DS	1		;I/O control byte
-BRKTAB	DS	8*3		;Breakpoint table
-TEMP	DS	2		;Temporary storage
-TEMP1	DS	1		;Temporary storage
-TEMP2	DS	1		;Temporary storage
-BUFFER	DS	50		;Disassembler output buffer
-MONSTK	EQU	$		;Some free space
+IOCTL	DS   1				;I/O control byte
+BRKTAB	DS   8*3			;Breakpoint table
+TEMP	DS   2				;Temporary storage
+TEMP1	DS   1				;Temporary storage
+TEMP2	DS   1				;Temporary storage
+BUFFER	DS   50				;Disassembler output buffer
+MONSTK	EQU  $				;Some free space
 
 ;
 ; Monitor Code
 
 #code MCODE, $0000
 
-	JP	BEGIN		;Start up monitor
-	ORG	1*8			;RST 1
-	JP	UCODE+(1*8)	;Execute user code
-	ORG	2*8			;RST 2
-	JP	UCODE+(2*8)	;Execute user code
-	ORG	3*8			;RST 3
-	JP	UCODE+(3*8)	;Execute user code
-	ORG	4*8			;RST 4
-	JP	UCODE+(4*8)	;Execute user code
-	ORG	5*8			;RST 5
-	JP	UCODE+(5*8)	;Execute user code
-	ORG	6*8			;RST 6
-	JP	UCODE+(6*8)	;Execute user code
-	ORG	7*8			;RST 7 - Breakpoint
+		JP	 BEGIN			;Start up monitor
+		ORG	 1*8			;RST 1
+		JP	 UCODE+(1*8)	;Execute user code
+		ORG	 2*8			;RST 2
+		JP   UCODE+(2*8)	;Execute user code
+		ORG	 3*8			;RST 3
+		JP	 UCODE+(3*8)	;Execute user code
+		ORG	 4*8			;RST 4
+		JP	 UCODE+(4*8)	;Execute user code
+		ORG	 5*8			;RST 5
+		JP	 UCODE+(5*8)	;Execute user code
+		ORG	 6*8			;RST 6
+		JP	 UCODE+(6*8)	;Execute user code
+		ORG	 7*8			;RST 7 - Breakpoint
 ;
 ; Breakpoint encountered - save registers, replace breakpoints
 ;
 
-BRKPT	LD	(uHL),HL	;Save HL
-		POP	HL			;Get PC
-		DEC	HL			;Backup to RST instruction
-		LD	(uPC),HL	;Save PC
-BRKP1	PUSH	AF		;Get AF
-		POP	HL			;Copy
-		LD	(uAF),HL	;Save AF
-		LD	HL,0		;Get 0
-		ADD	HL,SP		;Get SP
-		LD	(uSP),HL	;Save SP
-		EX	DE,HL		;Get DE
-		LD	(uDE),HL	;Save DE
-		LD	H,B			;Get B
-		LD	L,C			;Get C
-		LD	(uBC),HL	;Save BC
-		LD	(uIX),IX	;Save IX
-		LD	(uIY),IY	;Save IY
+BRKPT	LD   (uHL),HL		;Save HL
+		POP  HL				;Get PC
+		DEC	 HL				;Backup to RST instruction
+		LD	 (uPC),HL		;Save PC
+BRKP1	PUSH AF		    	;Get AF
+		POP	 HL				;Copy
+		LD	 (uAF),HL		;Save AF
+		LD	 HL,0			;Get 0
+		ADD	 HL,SP			;Get SP
+		LD	 (uSP),HL		;Save SP
+		EX	 DE,HL			;Get DE
+		LD	 (uDE),HL		;Save DE
+		LD	 H,B			;Get B
+		LD	 L,C			;Get C
+		LD	 (uBC),HL		;Save BC
+		LD	 (uIX),IX		;Save IX
+		LD	 (uIY),IY		;Save IY
 
 ;; Remove any active breakpoints
 
-		LD	HL,BRKTAB	;Point to breakpoint table
-		LD	B,8			;Total of 8 breakpoints
-rembrk1	LD	E,(HL)		;Get LOW address
-		INC	HL			;Skip to next
-		LD	D,(HL)		;Get HIGH address
-		INC	HL			;Skip to next
-		LD	A,D			;Get HIGH
-		OR	L			;Test with LOW
-		JR	Z,rembrk2	;No breakpoint here
-		LD	A,(HL)		;Get opcode
-		LD	(DE),A		;Resave opcode value
-rembrk2	INC	HL			;Skip to next
-		DJNZ	rembrk1	;Remove them all
-		CALL	RDUMP	;Display registers
-		JR		ENTMON	;Enter monitor
+		LD   HL,BRKTAB		;Point to breakpoint table
+		LD   B,8			;Total of 8 breakpoints
+rembrk1	LD   E,(HL)			;Get LOW address
+		INC  HL				;Skip to next
+		LD	 D,(HL)			;Get HIGH address
+		INC	 HL				;Skip to next
+		LD	 A,D			;Get HIGH
+		OR	 L				;Test with LOW
+		JR	 Z,rembrk2		;No breakpoint here
+		LD	 A,(HL)			;Get opcode
+		LD	 (DE),A			;Resave opcode value
+rembrk2	INC	 HL				;Skip to next
+		DJNZ rembrk1		;Remove them all
+		CALL RDUMP	    	;Display registers
+		JR	 ENTMON			;Enter monitor
 
 ;; Cold start entry point
 
-BEGIN	LD	SP,MONSTK	;Set initial stack
-		CALL	IOINIT	;Initialize I/O
+BEGIN	LD   SP,MONSTK		;Set initial stack
+		CALL IOINIT			;Initialize I/O
 ; Initialize monitor memory to zero
-		LD	HL,MDATA	;Point to start of monitor RAM
-		LD	DE,TEMP		;End of initialized area
-begin1	LD	(HL),0		;Zero 1 byte
-		CALL	CHLDE	;Perform compare
-		INC	HL			;Advance
-		JR	C,begin1	;Zero it all
+		LD   HL,MDATA		;Point to start of monitor RAM
+		LD   DE,TEMP		;End of initialized area
+begin1	LD   (HL),0			;Zero 1 byte
+		CALL CHLDE			;Perform compare
+		INC  HL				;Advance
+		JR   C,begin1		;Zero it all
 ; Output welcome message
-		CALL	WRMSG	;Output message
-		DB	$0A,$0D
-		defm	'MONZ80 Version 1.0'
-		DB	$0A,$0D,$0A
-		defm	'?COPY.TXT 1996-2007 Dave Dunfield'
-		DB	$0A,$0D
-		defm	' -- see COPY.TXT --.'
-		DB	$0A,0
+		CALL WRMSG			;Output message
+		DB   $0A,$0D
+		defm 'MONZ80 Version 1.0'
+		DB   $0A,$0D,$0A
+		defm '?COPY.TXT 1996-2007 Dave Dunfield'
+		DB   $0A,$0D
+		defm ' -- see COPY.TXT --.'
+		DB	 $0A,0
 ; Set initial PC and SP
-		LD	HL,UCODE	;Get default PC
-		LD	(uPC),HL	;Set it
-		LD	HL,USTACK	;Get default SP
-		LD	(uSP),HL	;Set it
+		LD   HL,UCODE		;Get default PC
+		LD   (uPC),HL		;Set it
+		LD   HL,USTACK		;Get default SP
+		LD   (uSP),HL		;Set it
 
 ;; Warm-start of monitor
-ENTMON	LD	SP,MONSTK		;Reset SP
-		LD	A,%01100000		;Echo, Ucase
-		LD	(IOCTL),A		;Set I/O control
-		CALL	WRMSG		;Output string
-		DB	$0A,$0D,'>',0	;Prompt string
+ENTMON	LD   SP,MONSTK		;Reset SP
+		LD   A,%01100000	;Echo, Ucase
+		LD   (IOCTL),A		;Set I/O control
+		CALL WRMSG			;Output string
+		DB   $0A,$0D,'>',0	;Prompt string
 ; Get command from console
-		LD	C,0			;Clear first char
-		LD	D,C			;Clear pending flag
-cmd		LD	B,C			;Set first character
-		CALL	GETC	;Get command character
-		LD	C,A			;Set second character
+		LD   C,0			;Clear first char
+		LD   D,C			;Clear pending flag
+cmd		LD   B,C			;Set first character
+		CALL GETC			;Get command character
+		LD	 C,A			;Set second character
 ; Search for command in command table
-		LD	HL,CTABLE	;Point to command table
-cmd1	LD	A,C			;Get LAST char
-		CP	(HL)		;Match?
-		INC	HL			;Skip to next
-		JR	NZ,cmd2		;No, try next
-		LD	A,B			;Get HIGH char
-		CP	(HL)		;Match?
-		JR	NZ,cmd2		;No, try next
+		LD   HL,CTABLE		;Point to command table
+cmd1	LD   A,C			;Get LAST char
+		CP   (HL)			;Match?
+		INC  HL				;Skip to next
+		JR   NZ,cmd2		;No, try next
+		LD   A,B			;Get HIGH char
+		CP   (HL)			;Match?
+		JR   NZ,cmd2		;No, try next
 ; We found the command - execute handler
-		INC	HL			;Skip second
-		CALL	SPACE	;Separator
-		LD	A,(HL)		;Get LOW address
-		INC	HL			;Advance
-		LD	H,(HL)		;Get HIGH address
-		LD	L,A			;Set LOW address
-		LD	BC,CMDRET	;Get return address
-		PUSH	BC		;Save for return
-		JP	(HL)		;Execute
+		INC  HL				;Skip second
+		CALL SPACE			;Separator
+		LD   A,(HL)			;Get LOW address
+		INC	 HL				;Advance
+		LD   H,(HL)			;Get HIGH address
+		LD   L,A			;Set LOW address
+		LD   BC,CMDRET		;Get return address
+		PUSH BC				;Save for return
+		JP   (HL)			;Execute
 ; This command didn't match, check for part of two char sequence
-cmd2	LD	A,C			;Get char
-		CP	(HL)		;Does it match leading of 2char?
-		JR	NZ,cmd3		;No, skip it
-		INC	D			;Record possibility
+cmd2	LD	A,C				;Get char
+		CP	(HL)			;Does it match leading of 2char?
+		JR	NZ,cmd3			;No, skip it
+		INC	D				;Record possibility
 ; Advance to next table entry
-cmd3	INC	HL		 	;Skip second
-		INC	HL		 	;Skip address LOW
-		INC	HL		 	;Skip address HIGH
-		LD	A,(HL)	 	;Get character
-		AND	A		 	;End of table
-		JR	NZ,cmd1	 	;Check every entry
-		OR	B		 	;First time through?
-		JR	NZ,ERROR 	;No, report error
-		OR	D			;Possible 2 char?
-		JR	NZ,cmd		;Try again (case bug fixed )
+cmd3	INC	HL		 		;Skip second
+		INC	HL		 		;Skip address LOW
+		INC	HL		 		;Skip address HIGH
+		LD	A,(HL)	 		;Get character
+		AND	A		 		;End of table
+		JR	NZ,cmd1	 		;Check every entry
+		OR	B		 		;First time through?
+		JR	NZ,ERROR 		;No, report error
+		OR	D				;Possible 2 char?
+		JR	NZ,cmd			;Try again (case bug fixed )
 ; An error has occured
-ERROR	CALL	WRMSG		;Output message
-		defm	' ?',0		;Error message
-CMDRET	LD	A,(IOCTL)		;Get I/O control
-		AND	%00010000		;Clean input?
-		JR	Z,ENTMON		;No, leave it (case bug fixed)
+ERROR	CALL WRMSG			;Output message
+		defm ' ?',0			;Error message
+CMDRET	LD   A,(IOCTL)		;Get I/O control
+		AND  %00010000		;Clean input?
+		JR	 Z,ENTMON		;No, leave it (case bug fixed)
 ; Wait for serial data to clear
-CLRSER	LD	BC,0		;Reset counter
-clrse1	CALL	TESTC		;Wait for input
-	AND	A		;Character ready?
-	JR	NZ,CLRSER	;Yes, reset
-	DEC	BC		;Reduce count
-	LD	A,B		;Get high
-	OR	C		;Test for zero
-	JR	NZ,clrse1	;Wait for expiry
-	JR	ENTMON		;Re-enter monitor
+CLRSER	LD   BC,0			;Reset counter
+clrse1	CALL TESTC			;Wait for input
+		AND  A				;Character ready?
+		JR	 NZ,CLRSER		;Yes, reset
+		DEC	 BC				;Reduce count
+		LD	 A,B			;Get high
+		OR	 C				;Test for zero
+		JR	 NZ,clrse1		;Wait for expiry
+		JR	 ENTMON			;Re-enter monitor
 
 ;; This bit was frustrating: 
 ;; Firstly, David's ASMZ80 assembler suopports very flexible DW directives, 
@@ -249,243 +265,242 @@ clrse1	CALL	TESTC		;Wait for input
 ;; any qustions about this, I can elaborate -- David Collins (Z8D)
 
 ; Command handler table
-CTABLE:
-    DB 'M','D'   ; Dump memory
-    DW DUMP
-    DB 'I','D'   ; Disassemble memory
-    DW DISCMD
-    DB 'R','D'   ; Dump registers
-    DW RDUMP
-    DB 'B','D'   ; Dump breakpoints
-    DW BDUMP
-    DB 'R','B'   ; Set breakpoint
-    DW SETBRK
-    DB 'E',0     ; Edit memory
-    DW EDIT
-    DB 'F',0     ; Fill memory
-    DW FILL
-    DB 'I',0     ; Input from a port
-    DW INPORT
-    DB 'O',0     ; Output to a port
-    DW OUTPORT
-    DB 'G',0     ; Go (execute)
-    DW GO
-    DB 'T',0     ; Single-step
-    DW STEP
-    DB 'L',0     ; Load HEX file
-    DW LOAD
+CTABLE:	DB   'M','D'   		; Dump memory
+		DW   DUMP
+    	DB   'I','D'   		; Disassemble memory
+    	DW   DISCMD
+    	DB   'R','D'   		; Dump registers
+    	DW   RDUMP
+    	DB   'B','D'   		; Dump breakpoints
+    	DW   BDUMP
+    	DB   'R','B'   		; Set breakpoint
+    	DW   SETBRK
+   		DB   'E',0     		; Edit memory
+    	DW   EDIT
+    	DB   'F',0     		; Fill memory
+    	DW   FILL
+    	DB   'I',0     		; Input from a port
+    	DW   INPORT
+    	DB   'O',0     		; Output to a port
+    	DW   OUTPORT
+    	DB   'G',0     		; Go (execute)
+    	DW   GO
+    	DB   'T',0     		; Single-step
+    	DW   STEP
+    	DB   'L',0     		; Load HEX file
+    	DW   LOAD
     ; Register modification commands
-    DB 'F','A'   ; Change AF
-    DW CAF
-    DB 'C','B'   ; Change BC
-    DW CBC
-    DB 'E','D'   ; Change DE
-    DW CDE
-    DB 'L','H'   ; Change HL
-    DW CHL
-    DB 'X','I'   ; Change IX
-    DW CIX
-    DB 'Y','I'   ; Change IY
-    DW CIY
-    DB 'C','P'   ; Change PC
-    DW CPC
-    DB 'P','S'   ; Change SP
-    DW CSP
-    DB '?',0     ; Help output
-    DW HELP
-    DB 0         ; End of table marker
+    	DB   'F','A'   		; Change AF
+    	DW   CAF
+    	DB   'C','B'   		; Change BC
+    	DW   CBC
+    	DB   'E','D'   		; Change DE
+    	DW   CDE
+    	DB   'L','H'   		; Change HL
+    	DW   CHL
+    	DB   'X','I'   		; Change IX
+    	DW   CIX
+    	DB   'Y','I'   		; Change IY
+    	DW   CIY
+    	DB   'C','P'   		; Change PC
+    	DW   CPC
+    	DB   'P','S'   		; Change SP
+    	DW   CSP
+    	DB   '?',0     		; Help output
+    	DW   HELP
+    	DB   0         		; End of table marker
 
 ;
 ; Help command
 ;
-HELP	LD		HL,HTEXT	;Point to help text
-help1	CALL	LFCR		;New line
-		LD		B,25		;Margin for comments
-help2	LD		A,(HL)		;Get data from table
-		INC		HL			;Skip to next
-		AND		A			;End of line?
-		JR		Z,help4		;Yes, stop
-		CP		'|'			;Special case?
-		JR		Z,help3		;Yes, handle it
-		CALL	PUTC		;Output character
-		DEC		B			;Reduce count
-		JR		help2		;Keep going
-help3	CALL	SPACE		;Space over
-		DJNZ	help3		;Do them all
-		LD		A,'-'		;Separator
-		CALL	PUTC		;output
-		CALL	SPACE		;Space over
-		JR		help2		;Keep outputing (case bug fixed)
-help4	OR		(HL)		;More data?
-		JR		NZ,help1	;Keep going
+HELP	LD   HL,HTEXT		;Point to help text
+help1	CALL LFCR			;New line
+		LD   B,25			;Margin for comments
+help2	LD   A,(HL)			;Get data from table
+		INC  HL				;Skip to next
+		AND  A				;End of line?
+		JR   Z,help4		;Yes, stop
+		CP   '|'			;Special case?
+		JR   Z,help3		;Yes, handle it
+		CALL PUTC			;Output character
+		DEC  B				;Reduce count
+		JR   help2			;Keep going
+help3	CALL SPACE			;Space over
+		DJNZ help3			;Do them all
+		LD   A,'-'			;Separator
+		CALL PUTC			;output
+		CALL SPACE			;Space over
+		JR   help2			;Keep outputing (case bug fixed)
+help4	OR   (HL)			;More data?
+		JR   NZ,help1		;Keep going
 		RET
 ;
 ; Go (execute)
 ;
-GO	LD	HL,(uPC)	;Get user PC
-	LD	B,H		;Copy HIGH
-	LD	C,L		;Copy LOW
-	CALL	GETADRD		;Get address with default
-	LD	(uPC),HL	;Save new user PC
-	CALL	LFCR		;New line
-	CALL	GOSTEP		;Step one instruction
+GO		LD   HL,(uPC)		;Get user PC
+		LD   B,H			;Copy HIGH
+		LD   C,L			;Copy LOW
+		CALL GETADRD		;Get address with default
+		LD   (uPC),HL		;Save new user PC
+		CALL LFCR			;New line
+		CALL GOSTEP			;Step one instruction
 ; Implant breakpoints
-	LD	HL,BRKTAB	;Point to breakpoint table
-	LD	B,8		;Max number of breakpoints
-imbrk1	LD	E,(HL)		;Get LOW address
-	INC	HL		;Advance
-	LD	D,(HL)		;Get HIGH address
-	INC	HL		;Advance
-	LD	A,D		;Get HIGH
-	OR	L		;Test for breakpoint set
-	JR	Z,imbrk2	;Not set
-	LD	A,(DE)		;Get opcode
-	LD	(HL),A		;Save in table
-	LD	A,$FF		;Get breakpoint opcode (RST 7)
-	LD	(DE),A		;Write to table
-imbrk2	INC	HL		;Advance to next
-	DJNZ	imbrk1		;Do them all
+		LD   HL,BRKTAB		;Point to breakpoint table
+		LD   B,8			;Max number of breakpoints
+imbrk1	LD   E,(HL)			;Get LOW address
+		INC	 HL				;Advance
+		LD	 D,(HL)			;Get HIGH address
+		INC	 HL				;Advance
+		LD	 A,D			;Get HIGH
+		OR	 L				;Test for breakpoint set
+		JR	 Z,imbrk2		;Not set
+		LD	 A,(DE)			;Get opcode
+		LD	 (HL),A			;Save in table
+		LD	 A,$FF			;Get breakpoint opcode (RST 7)
+		LD	 (DE),A			;Write to table
+imbrk2	INC	 HL				;Advance to next
+		DJNZ imbrk1			;Do them all
 ; Restore user registers and execute
-	LD	IX,(uIX)	;Get IX
-	LD	IY,(uIY)	;Get IY
-	LD	HL,(uBC)	;Get BC
-	LD	B,H		;Copy
-	LD	C,L		;Copy
-	LD	HL,(uDE)	;Get DE
-	EX	DE,HL		;Copy
-	LD	HL,(uAF)	;Get AF
-	PUSH	HL		;Save
-	POP	AF		;Copy
-	LD	HL,(uSP)	;Get user SP
-	LD	SP,HL		;Copy
-	LD	HL,(uPC)	;Get user PC
-	PUSH	HL		;Stack for return
-	LD	HL,(uHL)	;Get user HL
-	RET			;Jump to user program
+		LD   IX,(uIX)		;Get IX
+		LD   IY,(uIY)		;Get IY
+		LD   HL,(uBC)		;Get BC
+		LD   B,H			;Copy
+		LD   C,L			;Copy
+		LD   HL,(uDE)		;Get DE
+		EX   DE,HL			;Copy
+		LD   HL,(uAF)		;Get AF
+		PUSH HL				;Save
+		POP	 AF				;Copy
+		LD   HL,(uSP)		;Get user SP
+		LD   SP,HL			;Copy
+		LD   HL,(uPC)		;Get user PC
+		PUSH HL				;Stack for return
+		LD	 HL,(uHL)		;Get user HL
+		RET					;Jump to user program
 ;
 ; Dump memory in instruction format (disassembly)
 ;
-DISCMD	CALL	GETRANG		;Get address
-disc1	CALL	LFCR		;New line
-	CALL	DISASM		;Perform disassembly
-	CALL	CHLDE		;Are we at end?
-	JR	C,disc1		;No, keep going
-	JR	Z,disc1		;Do last address
-	RET
+DISCMD	CALL GETRANG		;Get address
+disc1	CALL LFCR			;New line
+		CALL DISASM			;Perform disassembly
+		CALL CHLDE			;Are we at end?
+		JR   C,disc1		;No, keep going
+		JR   Z,disc1		;Do last address
+		RET
 ;
 ; Dump memory in HEX format
 ;
-DUMP	CALL	GETRANG		;Get address range
-dump1	CALL	LFCR		;New line
-	CALL	WRADDR		;Output address
-	CALL	SPACE		;Space over
-	LD	B,16		;Display 16 bytes
-	PUSH	HL		;Save HL
-dump2	CALL	SPACE		;Space over
-	LD	A,(HL)		;Get data
-	CALL	WRBYTE		;Display it
-	INC	HL		;Advance
-	LD	A,B		;Get copy
-	DEC	A		;Adjust
-	AND	%00000011	;At 4 byte interval?
-	CALL	Z,SPACE		;Add extra space
-	DEC	B		;Backup count
-	JR	NZ,dump2	;Keep going
-	POP	HL		;Restore register set
-	CALL	SPACE		;Space over
-	LD	B,16		;Display 16 bytes
-dump3	LD	A,(HL)		;Get data
-	CALL	WRPRINT		;Display if printable
-	INC	HL		;Advance
-	DEC	B		;Decrement count
-	JR	NZ,dump3	;Do them all
-	CALL	CHLDE		;Compre HL and DE
-	JR	C,dump1		;Keep going
-	JR	Z,dump1		;Do last address
-	RET
+DUMP	CALL GETRANG		;Get address range
+dump1	CALL LFCR			;New line
+		CALL WRADDR			;Output address
+		CALL SPACE			;Space over
+		LD	 B,16			;Display 16 bytes
+		PUSH HL				;Save HL
+dump2	CALL SPACE			;Space over
+		LD   A,(HL)			;Get data
+		CALL WRBYTE			;Display it
+		INC	 HL				;Advance
+		LD	 A,B			;Get copy
+		DEC	 A				;Adjust
+		AND	 %00000011		;At 4 byte interval?
+		CALL Z,SPACE		;Add extra space
+		DEC  B				;Backup count
+		JR   NZ,dump2		;Keep going
+		POP	 HL				;Restore register set
+		CALL SPACE			;Space over
+		LD   B,16			;Display 16 bytes
+dump3	LD   A,(HL)			;Get data
+		CALL WRPRINT		;Display if printable
+		INC	 HL				;Advance
+		DEC	 B				;Decrement count
+		JR	 NZ,dump3		;Do them all
+		CALL CHLDE			;Compre HL and DE
+		JR	 C,dump1		;Keep going
+		JR	 Z,dump1		;Do last address
+		RET
 ; Compare HL and DE
-CHLDE	LD	A,H		;Get HIGH HL
-	CP	D		;Do compare
-	RET	NZ		;Not same
-	LD	A,L		;Get LOW HL
-	CP	E		;Do compare
-	RET
+CHLDE	LD   A,H			;Get HIGH HL
+		CP   D				;Do compare
+		RET  NZ				;Not same
+		LD   A,L			;Get LOW HL
+		CP   E				;Do compare
+		RET
 ; Display character if printable
-WRPRINT	CP	' '		;In range
-	JR	C,wrpri1	;Too low
-	CP	$7F		;In range?
-	JP	C,PUTC		;Ok, write it
-wrpri1	LD	A,'.'		;Translate to dot
-	JP	PUTC		;Write character
+WRPRINT	CP   ' '			;In range
+		JR   C,wrpri1		;Too low
+		CP   $7F			;In range?
+		JP   C,PUTC			;Ok, write it
+wrpri1	LD   A,'.'			;Translate to dot
+		JP   PUTC			;Write character
 ;
 ; Input from a port
 ;
-INPORT	CALL	GETHEX		;Get port number
-	LD	C,A		;Copy to port select
-	CALL	SPACE		;Space over
-	IN	A,(C)		;Read port
-	JP	WRBYTE		;Output
+INPORT	CALL GETHEX			;Get port number
+		LD   C,A			;Copy to port select
+		CALL SPACE			;Space over
+		IN   A,(C)			;Read port
+		JP   WRBYTE			;Output
 ;
 ; Output to a port
 ;
-OUTPORT	CALL	GETHEX		;Get port number
-	LD	C,A		;Copy to port select
-	CALL	SPACE		;Space over
-	CALL	GETHEX		;Get data
-	OUT	(C),A		;Write to port
-	RET
+OUTPORT	CALL GETHEX			;Get port number
+		LD   C,A			;Copy to port select
+		CALL SPACE			;Space over
+		CALL GETHEX			;Get data
+		OUT  (C),A			;Write to port
+		RET
 ;
 ; Single Step one instruction
 ;
-STEP	LD	HL,(uPC)	;Get user PC
-	LD	C,L		;Set C to copy of lower
-	CALL	DISASM		;Display on console
-	CALL	LFCR		;New line
-	CALL	GOSTEP1		;Perform step
+STEP	LD   HL,(uPC)		;Get user PC
+		LD   C,L			;Set C to copy of lower
+		CALL DISASM			;Display on console
+		CALL LFCR			;New line
+		CALL GOSTEP1		;Perform step
 ;
 ; Dump registers
 ;
-RDUMP	LD	HL,RNTEXT	;Point to register text
-	LD	DE,uAF		;Point to first register
-rdump1	CALL	SPACE		;Space over
-	CALL	WRSTR		;Write string
-	LD	A,(DE)		;Get LOW value
-	LD	C,A		;Save for later
-	INC	DE		;Advance
-	LD	A,(DE)		;Get HIGH value
-	INC	DE		;Advance
-	CALL	WRBYTE		;Write HIGH
-	LD	A,C		;Get LOW
-	CALL	WRBYTE		;Write LOW
-	LD	A,(HL)		;Get flag byte
-	AND	A		;At end?
-	JR	NZ,rdump1	;Continue
-	RET
+RDUMP	LD   HL,RNTEXT		;Point to register text
+		LD   DE,uAF			;Point to first register
+rdump1	CALL SPACE			;Space over
+		CALL WRSTR			;Write string
+		LD   A,(DE)			;Get LOW value
+		LD   C,A			;Save for later
+		INC  DE				;Advance
+		LD   A,(DE)			;Get HIGH value
+		INC  DE				;Advance
+		CALL WRBYTE			;Write HIGH
+		LD	 A,C			;Get LOW
+		CALL	WRBYTE		;Write LOW
+		LD	A,(HL)			;Get flag byte
+		AND	A				;At end?
+		JR	NZ,rdump1		;Continue
+		RET
 ; Text of register names (in order of register storage)
-RNTEXT	defm	'AF=',0
-		defm	'BC=',0
-		defm	'DE=',0
-		defm	'HL=',0
-		defm	'IX=',0
-		defm	'IY=',0
-		defm	'PC=',0
-		defm	'SP=',0
-		DB	0		;End of list
-CAF	LD	HL,uAF		;Point to register
-	JR	CHREG		;Change it
-CBC	LD	HL,uBC		;Point to register
-	JR	CHREG		;Change it
-CDE	LD	HL,uDE		;Point to register
-	JR	CHREG		;Change it
-CHL	LD	HL,uHL		;Point to register
-	JR	CHREG		;Change it
-CIX	LD	HL,uIX		;Point to register
-	JR	CHREG		;Change it
-CIY	LD	HL,uIY		;Point to register
-	JR	CHREG		;Change it
-CPC	LD	HL,uPC		;Point to register
-	JR	CHREG		;Change it
-CSP	LD	HL,uSP		;Point to register
+RNTEXT	defm 'AF=',0
+		defm 'BC=',0
+		defm 'DE=',0
+		defm 'HL=',0
+		defm 'IX=',0
+		defm 'IY=',0
+		defm 'PC=',0
+		defm 'SP=',0
+		DB   0				;End of list
+CAF		LD   HL,uAF			;Point to register
+		JR   CHREG			;Change it
+CBC		LD   HL,uBC			;Point to register
+		JR   CHREG			;Change it
+CDE		LD   HL,uDE			;Point to register
+		JR   CHREG			;Change it
+CHL		LD   HL,uHL			;Point to register
+		JR   CHREG			;Change it
+CIX		LD   HL,uIX			;Point to register
+		JR   CHREG			;Change it
+CIY		LD   HL,uIY			;Point to register
+		JR   CHREG			;Change it
+CPC		LD   HL,uPC			;Point to register
+		JR   CHREG			;Change it
+CSP		LD   HL,uSP			;Point to register
 ;Change register pointed to by DE
 CHREG	LD	D,H		;Copy HIGH
 	LD	E,L		;Copy LOW
