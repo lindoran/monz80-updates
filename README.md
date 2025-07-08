@@ -49,14 +49,26 @@ Currently the IO address is pointed at port 0x80.
 You can find the code segments at the top for customizing your memory map,
 and the io commands are at the bottom of the file:
 </p>
-<PRE>
-code segments:
-   USTACK - the user stack (top of RAM) 
-   UCODE - the user code area (where the user program is loaded) 
-   MDATA - the monitor data area (where the monitor variables are stored)
-   MCODE - the monitor code
-   _u68B50 - the 68B50 UART driver (found at bottom of this file)
-</PRE>
+<UL>
+   <LI>
+     <CODE>USTACK</CODE> - the user stack (top of RAM)
+   </LI>
+   <LI>
+     <CODE>UCODE</CODE> - the user code area (where the user program is loaded)
+   </LI>
+   <LI>   
+      <CODE>MDATA</CODE> - the monitor data area (where the monitor variables are stored)
+   </LI>
+   <LI>
+      <CODE>MCODE</CODE> - the monitor code
+   </LI>
+   <LI>      
+      <CODE>_u68B50</CODE> - the 68B50 UART driver (found at bottom of this file)
+   </LI>
+   <LI>      
+      <CODE>_BIOSCalls</CODE> - crappy little jump table for bios calls.
+   </LI>
+</UL>
 <p>
 While this does not have a specific license, it is (C) David Dunfield 1996-2007.
 please check out the COPY.TXT file, it includes the expectations and guidelines 
