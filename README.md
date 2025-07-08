@@ -68,7 +68,7 @@ for the distribution of the code.
 <H3>Disclaimer</H3>
 
 <p>
-David, nor myself are not liable for any use of this software,  it is found to 
+David, nor myself are liable for any use of this software,  it is found to 
 function and is "AS-IS".  You certainly are quite welcome to provide feedback and 
 fixes in the form of a pull request, but under no circumstances should this 
 be considered fit for any purpose, function or production use -- though I have
