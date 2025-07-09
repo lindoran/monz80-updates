@@ -60,7 +60,7 @@
 ;    MDATA-the monitor data area (where the monitor variables are stored)
 ;    MCODE-the monitor code
 ;    _u68B50-the 68B50 UART driver (found at bottom of this file)
-;    _BIOSCalls crappy little jump table for bios calls.
+
         
 ; zasm preproc:
 #charset ascii
@@ -122,15 +122,6 @@ MONSTK  EQU $             ;Some free space
         ORG 6 * 8         ;RST 6
         JP UCODE + (6 * 8) ;Execute user code
         ORG 7 * 8         ;RST 7-Breakpoint
-; Jump table 
-#code _BIOSCalls
-        
-_warmst JP ENTMON         ;warm entry point of monitor (returns to monitor)
-_testc  JP TESTC          ;tst for ch, ret a=0 no ch or a=ch
-_putc   JP PUTC           ;put character to console
-
-#code _mainrom
-
 ;
 ; Breakpoint encountered-save registers, replace breakpoints
 ;
