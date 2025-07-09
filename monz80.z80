@@ -47,7 +47,7 @@
 ; 09 - Aligned comments into a single column to improve readability.
 ; 10 - Aligned opcodes to column 9 for consistency.
 ; 11 - Replaced the UART driver with a 68B50 model, as used in my VZ200 clone.
-; 12 - Added a jump table (_BIOSCalls) for some of the useful routines 
+
 
 
 ; To port to your memory map you need to change MCODE, MDATA and UCODE

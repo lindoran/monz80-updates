@@ -1,6 +1,6 @@
                         ; --------------------------------------
                         ; zasm: assemble "monz80.z80"
-                        ; date: 2025-07-08 19:28:50
+                        ; date: 2025-07-08 19:40:58
                         ; --------------------------------------
 
 
@@ -53,7 +53,7 @@
                         ; 09 - Aligned comments into a single column to improve readability.
                         ; 10 - Aligned opcodes to column 9 for consistency.
                         ; 11 - Replaced the UART driver with a 68B50 model, as used in my VZ200 clone.
-                        ; 12 - Added a jump table (_BIOSCalls) for some of the useful routines 
+                        
                         
                         
                         ; To port to your memory map you need to change MCODE, MDATA and UCODE
@@ -2319,5 +2319,5 @@ xSUB         = $0096 =   150  MCODE   monz80.z80:1436
 xXOR         = $009A =   154  MCODE   monz80.z80:1444
 
 
-total time: 0.0147 sec.
+total time: 0.0145 sec.
 no errors
