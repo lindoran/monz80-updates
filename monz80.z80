@@ -59,12 +59,13 @@
 ;    UCODE-the user code area (where the user program is loaded)
 ;    MDATA-the monitor data area (where the monitor variables are stored)
 ;    MCODE-the monitor code
-;    _u68B50-the 68B50 UART driver (found at bottom of this file)
+
 
         
 ; zasm preproc:
 #charset ascii
 #target rom
+
         
 ; precalc size of table for single steps
 EFSIZE  EQU (EFEND-EFTAB) / 4
@@ -1703,8 +1704,7 @@ HTEXT   defm 'MONZ80 Commands:'
         defm 'AF,BC,DE,HL', 0
         defm 'IX,IY,SP,PC value|Set register value', 0
         DB 0
-        
-#code _u68B50
+
 ;
 ;------------ LOW LEVEL I/O FUNCTIONS -----------
 ; Modified for 68B50 UART at I/O port 80h (status/control) and 81h (data)

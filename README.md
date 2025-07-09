@@ -62,10 +62,13 @@ and the io commands are at the bottom of the file:
    <LI>
       <CODE>MCODE</CODE> - the monitor code
    </LI>
-   <LI>      
-      <CODE>_u68B50</CODE> - the 68B50 UART driver (found at bottom of this file)
-   </LI>
 </UL>
+<p>
+While it would have been nice to include the UART code as a stub code segment, ZASM's handling of segments makes that impractical. Because the segment name is not referenced anywhere inside the main ROM code, ZASM skips it entirely—*but only when building a .hex file*. Despite the fact that it builds a BIN just fine, it just happily ignores segment names you don't directly reference in code when producing Intel HEX output.Essentially, this is yet another entertaining reason why having an assembler with a well-documented, external linker really pays off -- End rant.
+</p>
+<br>
+<br>
+<br>
 <p>
 While this does not have a specific license, it is (C) David Dunfield 1996-2007.
 please check out the COPY.TXT file, it includes the expectations and guidelines 
