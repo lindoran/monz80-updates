@@ -65,9 +65,6 @@ and the io commands are at the bottom of the file:
    <LI>      
       <CODE>_u68B50</CODE> - the 68B50 UART driver (found at bottom of this file)
    </LI>
-   <LI>      
-      <CODE>_BIOSCalls</CODE> - crappy little jump table for bios calls.
-   </LI>
 </UL>
 <p>
 While this does not have a specific license, it is (C) David Dunfield 1996-2007.
