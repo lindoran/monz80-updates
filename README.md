@@ -17,20 +17,16 @@ https://k1.spdns.de/Develop/Projects/zasm/Distributions/
 <p>
 The resulting code compiles under ZASM and implements proper segments to 
 assist in porting the code to other boards.  Changed here are the comments,
-all * comments are converted to ;; comments, which ZASM likes much better.
+all * comments are converted to ; comments, which ZASM likes much better.
 The relative equates which were EQU * were replaced with EQU $, and various 
 parameters were changed to reflect MSB / LSB assignments, along with a number
 of case non sensitive label names which had to be updated.
-</p>
-<p>
-The tabbing and spacing of the original files have left the code in a slightly 
-"mangled but assembling" state. I will try to poke at this from time to time but, 
-the goal here was simply to get the code to assemble under something slightly 
-more modern; which was done. If you do find the chance to do a pull request please 
-feel free to fix the section of the code you are working in. I would surely 
-appreciate it, though ill get through this eventually. 
-</p>
 
+A complete list of changes can be found in the listing.
+</p>
+<H3>
+Is this Free Software?
+</H3>
 <p>
 The monitor was released by David, and the details for copying are included in
 COPY.TXT.  While not open source its fairly re-distributable for personal
