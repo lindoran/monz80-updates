@@ -64,11 +64,21 @@ and the io commands are at the bottom of the file:
    </LI>
 </UL>
 <p>
-While it would have been nice to include the UART code as a stub code segment, ZASM's handling of segments makes that impractical. Because the segment name is not referenced anywhere inside the main ROM code, ZASM skips it entirely—*but only when building a .hex file*. Despite the fact that it builds a BIN just fine, it just happily ignores segment names you don't directly reference in code when producing Intel HEX output.Essentially, this is yet another entertaining reason why having an assembler with a well-documented, external linker really pays off -- End rant.
+<BR>
+<b>A little rant:</b>
+
+While it would have been nice to include the UART code as a stub code segment, ZASM's handling of segments makes that impractical. Because the segment name is not referenced anywhere inside the main ROM code, ZASM skips it entirely—<em>but only when building a .hex file</em>. Despite the fact that it builds a BIN just fine, it just happily ignores segment names you don't directly reference in code when producing Intel HEX output.  Essentially, this is yet another entertaining reason why having an assembler with a well-documented, external linker really pays off -- End rant.
 </p>
-<br>
-<br>
-<br>
+<p>
+<BR>
+<b>Why ZASM then?</b> 
+
+Well initially its what I know, so that helps but to be honest looking at the way it handles most code I believed on the onset it would be easier to fix the code with the way ZASM handles syntax. While that was true, most of the changes with the exception of the big table for the command processor, the biggest issues came when I tried to use the hex output. In embedded programming its basically essential that the .hex generation of whatever you are using is a carbon copy of the binary output. That's simply not the case. While I’m certain its possible to make that work as intended, there are other assemblers that have better documented linking behavior, such as the 'as' macro assembler (http://john.ccac.rwth-aachen.de:8000/as/). Most likely that would have been the better choice. Maybe I will see if its possible to move that in that direction, the biggest advantage is the well documented linker.  
+</p>
+
+<H3>
+The Legal bits:
+</H3>
 <p>
 While this does not have a specific license, it is (C) David Dunfield 1996-2007.
 please check out the COPY.TXT file, it includes the expectations and guidelines 
