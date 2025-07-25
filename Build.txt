@@ -35,4 +35,7 @@ Building
       make clean
       ```
 
+Files of note:
+MONZ80-OLD.BIN was built using Dave's ASMZ80.COM. It is included here to ensure byte-for-byte accuracy with the original.
+
 For troubleshooting or more details, refer to the `README.md`.
