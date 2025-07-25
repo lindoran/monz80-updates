@@ -1,0 +1,38 @@
+Build Instructions for monz80-updates
+=====================================
+
+This Repository contains updated MONZ80 sources that compile under zasm.
+
+Requirements
+------------
+- **zasm**: You need the Z80 assembler `zasm` to build the source files. 
+Download and install it from: https://k1.spdns.de/Develop/Projects/zasm/
+
+Source Listing Folder
+---------------------
+The `original source listing` folder contains:
+- The original Z80 assembly source files for the VZ200 Serial Test ROMs.
+- Original work by David Dunfield and is (C) Him.
+- See COPY.TXT for detials
+- Documentation and comments from the original authors.
+- Reference binaries and listings for comparison.
+
+(See `README.md` for more details about the contents and history.)
+
+Building
+--------
+1. Ensure `zasm` is installed and available in your PATH.
+2. Open a terminal in this repository's root directory.
+3. Run:
+    ```
+    make
+    ```
+    The `Makefile` automates the build process:
+    - It assembles all `.asm` files in the modules using `zasm`.
+    - Output binaries are placed in the appropriate folders.
+    - If you want to clean up build artifacts, run:
+      ```
+      make clean
+      ```
+
+For troubleshooting or more details, refer to the `README.md`.
